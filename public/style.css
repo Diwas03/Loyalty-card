@@ -1,0 +1,79 @@
+:root {
+  font-family: system-ui;
+  color: #30251f;
+  background: #f5f0e7;
+}
+body {
+  max-width: 760px;
+  margin: 3rem auto;
+  padding: 0 20px;
+}
+h1 {
+  letter-spacing: -1px;
+}
+nav {
+  display: flex;
+  gap: 24px;
+}
+a {
+  color: #654323;
+}
+section,
+.card {
+  padding: 24px;
+  margin: 20px 0;
+  border: 1px solid #d5c5af;
+  border-radius: 18px;
+  background: white;
+}
+.card {
+  background: #41291d;
+  color: #fff;
+  text-align: center;
+}
+button,
+.button {
+  display: inline-block;
+  border: 0;
+  border-radius: 8px;
+  background: #68492f;
+  color: white;
+  padding: 12px 18px;
+  margin: 5px 3px;
+  text-decoration: none;
+  font: inherit;
+  cursor: pointer;
+}
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+input {
+  padding: 12px;
+  border: 1px solid #bda98f;
+  border-radius: 8px;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+img {
+  max-width: 100%;
+}
+small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+#message {
+  white-space: pre-wrap;
+  padding: 12px;
+}
+video {
+  max-width: 100%;
+  width: 360px;
+}
+pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.muted {
+  color: #6a6259;
+}

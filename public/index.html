@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Demo Coffee membership</title>
+    <link rel="stylesheet" href="/style.css" />
+    <script src="/customer.js" defer></script>
+  </head>
+  <body>
+    <nav>
+      <a href="/">Customer card</a><a href="/staff.html">Staff testing</a>
+    </nav>
+    <h1>Demo Coffee Shop</h1>
+    <p>One paid coffee, one stamp. Eight stamps, one free coffee.</p>
+    <div id="message" role="status"></div>
+    <div id="card"></div>
+    <section>
+      <h2>Save your card</h2>
+      <button id="google" disabled>Add to Google Wallet</button>
+      <p id="google-status"></p>
+      <button id="apple" disabled>Add to Apple Wallet</button>
+      <p id="apple-status"></p>
+      <p class="muted">
+        The browser card above uses your official backend balance. No wallet
+        delivery is simulated.
+      </p>
+    </section>
+  </body>
+</html>

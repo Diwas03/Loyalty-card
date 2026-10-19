@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Staff testing</title>
+    <link rel="stylesheet" href="/style.css" />
+    <script src="/vendor/zxing/zxing-browser.min.js" defer></script>
+    <script src="/staff.js" defer></script>
+  </head>
+  <body>
+    <nav><a href="/">Customer card</a></nav>
+    <h1>Staff testing</h1>
+    <section>
+      <form id="login">
+        <label
+          >Staff password
+          <input
+            id="password"
+            type="password"
+            autocomplete="current-password"
+            required /></label
+        ><button>Sign in</button>
+      </form>
+      <button id="logout">Sign out</button>
+    </section>
+    <section>
+      <h2>Find membership</h2>
+      <form id="lookup">
+        <input
+          id="member"
+          placeholder="Membership identifier"
+          aria-label="Membership identifier"
+          required
+        /><button>Look up</button>
+      </form>
+      <button id="scan">Start camera scanner</button
+      ><button id="stop">Stop camera</button
+      ><video id="video" muted playsinline></video>
+      <p>
+        Camera requires HTTPS or localhost. QR only identifies membership;
+        confirm actions below.
+      </p>
+    </section>
+    <div id="message" role="status"></div>
+    <section>
+      <h2>Official backend balance</h2>
+      <pre id="balance">Look up a customer after signing in.</pre>
+      <button id="purchase" disabled>Record one paid coffee</button
+      ><button id="redeem" disabled>Redeem one reward</button>
+      <h2>Wallet delivery jobs</h2>
+      <p>
+        Delivered means provider request accepted, not a confirmed device
+        refresh. Apple jobs with no registrations send no pushes.
+      </p>
+      <pre id="delivery"></pre>
+    </section>
+  </body>
+</html>
