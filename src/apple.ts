@@ -14,7 +14,7 @@ export function applePass(m: Member) {
       wwdr: readFileSync(process.env.APPLE_WWDR_FILE!),
       signerCert: readFileSync(process.env.APPLE_CERT_FILE!),
       signerKey: readFileSync(process.env.APPLE_KEY_FILE!),
-      signerKeyPassphrase: process.env.APPLE_KEY_PASSPHRASE,
+      signerKeyPassphrase: process.env.APPLE_KEY_PASSPHRASE || undefined,
     },
     {
       formatVersion: 1,
@@ -68,7 +68,7 @@ export async function pushApple(token: string) {
         readFileSync(process.env.APPLE_WWDR_FILE!),
       ]),
       key: readFileSync(process.env.APPLE_KEY_FILE!),
-      passphrase: process.env.APPLE_KEY_PASSPHRASE,
+      passphrase: process.env.APPLE_KEY_PASSPHRASE || undefined,
     });
     let statusCode = 0;
     const timer = setTimeout(() => {
