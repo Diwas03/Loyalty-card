@@ -20,7 +20,10 @@
     "hosted:schema": "tsx scripts/hosted-schema.ts",
     "hosted:staff": "tsx scripts/hosted-staff.ts",
     "hosted:import": "tsx scripts/import-sqlite.ts",
-    "hosted:configure": "tsx scripts/configure-hosted.ts"
+    "hosted:configure": "tsx scripts/configure-hosted.ts",
+    "local": "node scripts/local.mjs",
+    "local:staff": "node scripts/local.mjs staff",
+    "local:stop": "node scripts/local.mjs stop"
   },
   "dependencies": {
     "@vercel/functions": "^3.10.1",

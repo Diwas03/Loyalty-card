@@ -1,5 +1,8 @@
 # Demo Coffee Shop · Single-shop loyalty pilot
 
+**Quick local start:** with Node 24 and Docker Desktop running, use `npm ci` then `npm run local`. In another terminal, run `npm run local:staff -- owner owner` to choose your password. See [Windows run instructions](docs/RUN_LOCALLY.md). This is an isolated local database; live Vercel/Supabase setup remains separate.
+
+
 **Current connected-deployment setup:** read [Automatic setup and migration](docs/AUTOMATIC_SETUP.md). The latest server uses Postgres; older SQLite instructions below apply only to historical installations/imports. Vercel uses the private `coffee` schema, while the preceding server migration created `public` tables. The configuration command preserves source data and refuses ambiguous overwrites. Tests now use disposable real Postgres through Docker, not a database emulator.
 
 
