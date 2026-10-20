@@ -3,6 +3,22 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { databaseOptions, databaseUrl } from "../src/database-config.js";
 import { publicBaseUrl } from "../src/config.js";
+import { verifyPassword } from "../src/auth.js";
+test("invalid API URL cannot mask the connected PostgreSQL integration", () => {
+  const uri = "postgresql://test:placeholder@db.example.com:6543/postgres";
+  assert.equal(databaseUrl({ DATABASE_URL: "https://project.supabase.co", POSTGRES_URL: uri }), uri);
+  for (const value of [
+    "https://project.supabase.co/?token=do-not-log",
+    "not-a-uri-do-not-log",
+    "postgresql://postgres.project:[YOUR-PASSWORD]@pooler.example:6543/postgres",
+    "postgresql://postgres.project@pooler.example:6543/postgres",
+  ]) assert.throws(() => databaseOptions({ DATABASE_URL: value }), error => {
+    assert.ok(error instanceof Error);
+    assert.ok(!error.message.includes("do-not-log"));
+    return true;
+  });
+  assert.equal(verifyPassword("test-password", "not-a-hash"), false);
+});
 test("Supabase Vercel connection aliases work without disabling TLS verification", () => {
   const env = {
     POSTGRES_URL:

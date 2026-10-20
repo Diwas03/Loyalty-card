@@ -10,6 +10,7 @@ export function passwordHash(password: string) {
 
 export function verifyPassword(password: unknown, hash: string) {
   if (typeof password !== "string" || password.length > 200) return false;
+  if (!/^[^:]+:[a-f0-9]{64}$/i.test(hash)) return false;
   const [salt, expected] = hash.split(":");
   if (!salt || !expected) return false;
   const actual = scryptSync(password, salt, 32).toString("hex");

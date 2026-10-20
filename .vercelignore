@@ -1,0 +1,10 @@
+.git
+node_modules
+.env
+.env.*
+!.env.example
+data
+secrets
+*.log
+python3.exe
+python3.cmd

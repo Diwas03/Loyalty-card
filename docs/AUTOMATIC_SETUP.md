@@ -17,6 +17,16 @@ Connecting Supabase to Vercel supplies connection variables. It does not create 
 
 ## One-command database configuration
 
+If `DATABASE_URL` was accidentally set to your `https://PROJECT_REF.supabase.co`
+API address, replace it in secure environment settings with **Connect → Transaction
+pooler → PostgreSQL URI**. Replace `[YOUR-PASSWORD]` with the actual database
+password and percent-encode its special characters. A valid `POSTGRES_URL`
+integration binding takes precedence over an invalid API address. No script can
+recover a missing database password from the project ID. Passwords and completed
+connection strings must stay outside Git. Malformed staff hashes fail closed;
+create a hosted owner with `npm run hosted:staff -- owner owner` after the database
+connection is working. This prompts privately and writes the account to the database.
+
 With the Supabase connection configured in a **private local environment** and PUBLIC_BASE_URL set to the production URL:
 
 ```powershell
