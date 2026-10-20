@@ -1,11 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import request from "supertest";
-import { openDb } from "../src/db.js";
+import { memDb } from "./helpers.js";
 import { createApp } from "../src/app.js";
 delete process.env.PUBLIC_BASE_URL;
+
 test("shop self-enrollment requires consent and cookie, retries reuse membership without resetting balance", async () => {
-  const db = openDb(":memory:"),
+  const db = await memDb(),
     app = createApp(db),
     customer = request.agent(app);
   await request(app)
@@ -22,7 +23,10 @@ test("shop self-enrollment requires consent and cookie, retries reuse membership
     .send({ name: "Coffee fan", accept: true })
     .expect(200);
   const id = first.body.member.id;
-  db.prepare("UPDATE members SET stamps=3,rewards=1 WHERE id=?").run(id);
+  await db.query(
+    "UPDATE members SET stamps = 3, rewards = 1 WHERE id = $1",
+    [id],
+  );
   const second = await customer
     .post("/api/join")
     .send({ name: "Changed nickname", accept: true })
@@ -33,23 +37,24 @@ test("shop self-enrollment requires consent and cookie, retries reuse membership
   assert.equal(second.body.member.name, "Coffee fan");
   assert.equal(second.body.member.apple_token, undefined);
   assert.equal(
-    (await customer.get("/api/customer-session")).body.member.id,
+    (await customer.get("/api/customer-session")).body.member?.id,
     id,
   );
-  assert.equal(
-    db.prepare("SELECT count(*) AS n FROM customer_enrollments").get()!.n,
-    1,
+  const { rows } = await db.query(
+    "SELECT count(*) AS n FROM customer_enrollments",
   );
+  assert.equal(Number(rows[0].n), 1);
   await customer
     .post("/api/staff/members/" + id + "/purchase")
     .send({ confirm: true })
     .expect(401);
-  db.close();
+  await db.end();
 });
+
 test("different browsers scanning the same shop QR get different memberships; stored cookie credential is hashed", async () => {
-  const db = openDb(":memory:"),
+  const db = await memDb(),
     app = createApp(db);
-  const ids = [];
+  const ids: string[] = [];
   for (let i = 0; i < 2; i++) {
     const c = request.agent(app);
     const session = await c.get("/api/customer-session");
@@ -61,18 +66,17 @@ test("different browsers scanning the same shop QR get different memberships; st
       .send({ name: "Same nickname", accept: true })
       .expect(200);
     ids.push(r.body.member.id);
-    assert.ok(
-      !db
-        .prepare("SELECT token_hash FROM customer_enrollments")
-        .all()
-        .some((x) => x.token_hash === raw),
+    const { rows } = await db.query(
+      "SELECT token_hash FROM customer_enrollments",
     );
+    assert.ok(!rows.some((x: { token_hash: string }) => x.token_hash === raw));
   }
   assert.notEqual(ids[0], ids[1]);
-  db.close();
+  await db.end();
 });
+
 test("printed shop QR uses the public join URL, never a customer membership", async () => {
-  const db = openDb(":memory:"),
+  const db = await memDb(),
     app = createApp(db);
   await request(app).get("/shop-qr.png").expect(503);
   process.env.PUBLIC_BASE_URL = "https://coffee.example";
@@ -88,5 +92,5 @@ test("printed shop QR uses the public join URL, never a customer membership", as
     .send({ name: "x", accept: true })
     .expect(403);
   delete process.env.PUBLIC_BASE_URL;
-  db.close();
+  await db.end();
 });

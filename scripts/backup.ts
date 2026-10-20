@@ -1,23 +1,36 @@
 import "dotenv/config";
-import { DatabaseSync, backup } from "node:sqlite";
-import { existsSync, mkdirSync } from "node:fs";
-import { dirname, resolve } from "node:path";
-const source = process.env.DB_PATH || "data/coffee.sqlite";
+import { openDb } from "../src/db.js";
+import { writeFileSync } from "node:fs";
+import { resolve } from "node:path";
+
+// PostgreSQL backup: dump all tables as JSON to a timestamped file.
 const dest = resolve(
   process.argv[2] ||
-    `data/backups/coffee-${new Date().toISOString().replace(/[:.]/g, "-")}.sqlite`,
+    `data/backups/coffee-${new Date().toISOString().replace(/[:.]/g, "-")}.json`,
 );
-if (!existsSync(source))
-  throw new Error("Database does not exist; start the app once first.");
-if (existsSync(dest))
-  throw new Error(
-    "Destination already exists; refusing to overwrite a backup.",
-  );
-mkdirSync(dirname(dest), { recursive: true });
-const db = new DatabaseSync(source);
+
+const db = openDb();
 try {
-  await backup(db, dest);
-  console.log("Consistent database backup saved: " + dest);
+  const tables = [
+    "members",
+    "operations",
+    "jobs",
+    "registrations",
+    "sessions",
+    "meta",
+    "staff_accounts",
+    "wallet_issuance",
+    "programme",
+    "programme_changes",
+    "customer_enrollments",
+  ];
+  const backup: Record<string, unknown[]> = {};
+  for (const table of tables) {
+    const { rows } = await db.query(`SELECT * FROM ${table}`);
+    backup[table] = rows;
+  }
+  writeFileSync(dest, JSON.stringify(backup, null, 2));
+  console.log("Database backup saved: " + dest);
 } finally {
-  db.close();
+  await db.end();
 }

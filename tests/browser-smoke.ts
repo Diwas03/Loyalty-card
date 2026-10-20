@@ -3,13 +3,14 @@ import { chromium } from "playwright";
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
 import { openDb } from "../src/db.js";
+import { memDb } from "./helpers.js";
 import { setStaff } from "../src/auth.js";
 import { createApp } from "../src/app.js";
 delete process.env.PUBLIC_BASE_URL;
 delete process.env.GOOGLE_SERVICE_ACCOUNT_FILE;
-const db = openDb(":memory:");
+const db = await memDb();
 const password = randomBytes(20).toString("hex");
-setStaff(db, "owner", password, "owner");
+await setStaff(db, "owner", password, "owner");
 const server = createApp(db).listen(0, "127.0.0.1");
 await new Promise<void>((resolve) => server.once("listening", resolve));
 const address = server.address() as { port: number };
@@ -138,5 +139,5 @@ try {
 } finally {
   await browser?.close();
   await new Promise<void>((resolve) => server.close(() => resolve()));
-  db.close();
+  await db.end();
 }

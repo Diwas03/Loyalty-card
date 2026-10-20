@@ -1,9 +1,13 @@
 import "dotenv/config";
-import { openDb } from "./db.js";
+import { openDb, migrate } from "./db.js";
 import { runOne } from "./queue.js";
+
 const db = openDb();
+await migrate(db);
+
 let running = false,
   stopping = false;
+
 const timer = setInterval(async () => {
   if (running || stopping) return;
   running = true;
@@ -16,9 +20,10 @@ const timer = setInterval(async () => {
     );
   } finally {
     running = false;
-    if (stopping) db.close();
+    if (stopping) await db.end();
   }
 }, 1000);
+
 console.log(
   "Wallet worker running; missing credentials produce blocked jobs, never simulated delivery.",
 );
@@ -27,5 +32,5 @@ for (const signal of ["SIGINT", "SIGTERM"] as const)
   process.once(signal, () => {
     stopping = true;
     clearInterval(timer);
-    if (!running) db.close();
+    if (!running) db.end();
   });

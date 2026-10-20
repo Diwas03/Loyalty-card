@@ -1,68 +1,18 @@
-import { DatabaseSync } from "node:sqlite";
+import { Pool, PoolClient } from "pg";
 import { randomBytes, randomUUID } from "node:crypto";
-import { mkdirSync } from "node:fs";
-import { dirname } from "node:path";
-export function openDb(path = process.env.DB_PATH || "data/coffee.sqlite") {
-  if (path !== ":memory:") mkdirSync(dirname(path), { recursive: true });
-  const db = new DatabaseSync(path);
-  db.exec(`PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000; PRAGMA foreign_keys=ON;
- CREATE TABLE IF NOT EXISTS members(id TEXT PRIMARY KEY,name TEXT NOT NULL,stamps INTEGER NOT NULL DEFAULT 0 CHECK(stamps>=0),rewards INTEGER NOT NULL DEFAULT 0 CHECK(rewards>=0),version INTEGER NOT NULL DEFAULT 1,apple_token TEXT NOT NULL);
- CREATE TABLE IF NOT EXISTS operations(key TEXT PRIMARY KEY,member_id TEXT NOT NULL,kind TEXT NOT NULL,result TEXT NOT NULL);
- CREATE TABLE IF NOT EXISTS jobs(id INTEGER PRIMARY KEY,member_id TEXT NOT NULL,provider TEXT NOT NULL,version INTEGER NOT NULL,status TEXT NOT NULL DEFAULT 'pending',attempts INTEGER NOT NULL DEFAULT 0,next_at INTEGER NOT NULL DEFAULT 0,error TEXT,UNIQUE(member_id,provider,version));
- CREATE TABLE IF NOT EXISTS registrations(device TEXT NOT NULL,member_id TEXT NOT NULL,push_token TEXT NOT NULL,PRIMARY KEY(device,member_id));
- CREATE TABLE IF NOT EXISTS sessions(token TEXT PRIMARY KEY,expires INTEGER NOT NULL);
- CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY,value INTEGER NOT NULL);
- INSERT OR IGNORE INTO meta VALUES('revision',1);`);
-  db.exec("BEGIN IMMEDIATE");
-  try {
-    // Migrations preserve installed membership IDs, balances and pass tokens.
-    const addColumn = (table: string, name: string, definition: string) => {
-      if (
-        !db
-          .prepare(`PRAGMA table_info(${table})`)
-          .all()
-          .some((c) => c.name === name)
-      )
-        db.exec(`ALTER TABLE ${table} ADD COLUMN ${name} ${definition}`);
-    };
-    addColumn("sessions", "username", "TEXT NOT NULL DEFAULT 'legacy'");
-    addColumn("operations", "actor", "TEXT NOT NULL DEFAULT 'legacy'");
-    addColumn("operations", "created_at", "INTEGER NOT NULL DEFAULT 0");
-    db.exec(`CREATE TABLE IF NOT EXISTS staff_accounts(username TEXT PRIMARY KEY,password_hash TEXT NOT NULL,role TEXT NOT NULL CHECK(role IN ('staff','owner')),enabled INTEGER NOT NULL DEFAULT 1);
-  CREATE TABLE IF NOT EXISTS wallet_issuance(member_id TEXT NOT NULL,provider TEXT NOT NULL,created_at INTEGER NOT NULL,PRIMARY KEY(member_id,provider));
-  CREATE INDEX IF NOT EXISTS jobs_ready ON jobs(status,next_at);
-  CREATE INDEX IF NOT EXISTS operations_member ON operations(member_id,created_at);`);
-    db.exec(`CREATE TABLE IF NOT EXISTS programme(id INTEGER PRIMARY KEY CHECK(id=1),stamp_goal INTEGER NOT NULL CHECK(stamp_goal BETWEEN 2 AND 100));INSERT OR IGNORE INTO programme VALUES(1,8);
-  CREATE TABLE IF NOT EXISTS programme_changes(id INTEGER PRIMARY KEY,actor TEXT NOT NULL,old_goal INTEGER NOT NULL,new_goal INTEGER NOT NULL,created_at INTEGER NOT NULL);`);
-    if (
-      String(
-        db.prepare("SELECT sql FROM sqlite_master WHERE name='members'").get()!
-          .sql,
-      ).includes("BETWEEN 0 AND 7")
-    )
-      db.exec(`CREATE TABLE members_migrated(id TEXT PRIMARY KEY,name TEXT NOT NULL,stamps INTEGER NOT NULL DEFAULT 0 CHECK(stamps>=0),rewards INTEGER NOT NULL DEFAULT 0 CHECK(rewards>=0),version INTEGER NOT NULL DEFAULT 1,apple_token TEXT NOT NULL);
-  INSERT INTO members_migrated SELECT * FROM members; DROP TABLE members; ALTER TABLE members_migrated RENAME TO members;`);
-    db.exec(
-      "CREATE TABLE IF NOT EXISTS customer_enrollments(token_hash TEXT PRIMARY KEY,member_id TEXT NOT NULL REFERENCES members(id),created_at INTEGER NOT NULL)",
-    );
-    db.exec(
-      "UPDATE meta SET value=MAX(value,COALESCE((SELECT MAX(version) FROM members),1)) WHERE key='revision'",
-    );
-    db.exec("COMMIT");
-  } catch (e) {
-    db.exec("ROLLBACK");
-    db.close();
-    throw e;
-  }
-  if (!db.prepare("SELECT id FROM members LIMIT 1").get())
-    db.prepare("INSERT INTO members(id,name,apple_token) VALUES(?,?,?)").run(
-      randomUUID(),
-      "Test Coffee Customer",
-      randomBytes(32).toString("hex"),
-    );
-  return db;
+
+export function openDb(): Pool {
+  const connectionString = process.env.DATABASE_URL;
+  if (!connectionString) throw new Error("DATABASE_URL is not set");
+  return new Pool({
+    connectionString,
+    ssl: { rejectUnauthorized: false },
+    max: 10,
+  });
 }
-export type DB = ReturnType<typeof openDb>;
+
+export type DB = Pool;
+
 export type Member = {
   id: string;
   name: string;
@@ -72,13 +22,120 @@ export type Member = {
   apple_token: string;
   stamp_goal?: number;
 };
-export const member = (db: DB, id: string) =>
-  db
-    .prepare(
-      "SELECT members.*,programme.stamp_goal FROM members CROSS JOIN programme WHERE members.id=?",
-    )
-    .get(id) as Member | undefined;
-export function transact(
+
+/** Run the schema migrations and seed data on first start. */
+export async function migrate(db: DB): Promise<void> {
+  const client = await db.connect();
+  try {
+    await client.query("BEGIN");
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS members (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        stamps INTEGER NOT NULL DEFAULT 0 CHECK (stamps >= 0),
+        rewards INTEGER NOT NULL DEFAULT 0 CHECK (rewards >= 0),
+        version INTEGER NOT NULL DEFAULT 1,
+        apple_token TEXT NOT NULL DEFAULT ''
+      );
+      CREATE TABLE IF NOT EXISTS operations (
+        key TEXT PRIMARY KEY,
+        member_id TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        result TEXT NOT NULL,
+        actor TEXT NOT NULL DEFAULT 'legacy',
+        created_at BIGINT NOT NULL DEFAULT 0
+      );
+      CREATE TABLE IF NOT EXISTS jobs (
+        id BIGSERIAL PRIMARY KEY,
+        member_id TEXT NOT NULL,
+        provider TEXT NOT NULL,
+        version INTEGER NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        attempts INTEGER NOT NULL DEFAULT 0,
+        next_at BIGINT NOT NULL DEFAULT 0,
+        error TEXT,
+        UNIQUE (member_id, provider, version)
+      );
+      CREATE INDEX IF NOT EXISTS jobs_ready ON jobs (status, next_at);
+      CREATE TABLE IF NOT EXISTS registrations (
+        device TEXT NOT NULL,
+        member_id TEXT NOT NULL,
+        push_token TEXT NOT NULL,
+        PRIMARY KEY (device, member_id)
+      );
+      CREATE TABLE IF NOT EXISTS sessions (
+        token TEXT PRIMARY KEY,
+        expires BIGINT NOT NULL,
+        username TEXT NOT NULL DEFAULT 'legacy'
+      );
+      CREATE TABLE IF NOT EXISTS meta (
+        key TEXT PRIMARY KEY,
+        value BIGINT NOT NULL
+      );
+      INSERT INTO meta VALUES ('revision', 1) ON CONFLICT (key) DO NOTHING;
+      CREATE TABLE IF NOT EXISTS staff_accounts (
+        username TEXT PRIMARY KEY,
+        password_hash TEXT NOT NULL,
+        role TEXT NOT NULL CHECK (role IN ('staff', 'owner')),
+        enabled INTEGER NOT NULL DEFAULT 1
+      );
+      CREATE TABLE IF NOT EXISTS wallet_issuance (
+        member_id TEXT NOT NULL,
+        provider TEXT NOT NULL,
+        created_at BIGINT NOT NULL,
+        PRIMARY KEY (member_id, provider)
+      );
+      CREATE TABLE IF NOT EXISTS programme (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        stamp_goal INTEGER NOT NULL CHECK (stamp_goal BETWEEN 2 AND 100)
+      );
+      INSERT INTO programme VALUES (1, 8) ON CONFLICT (id) DO NOTHING;
+      CREATE TABLE IF NOT EXISTS programme_changes (
+        id BIGSERIAL PRIMARY KEY,
+        actor TEXT NOT NULL,
+        old_goal INTEGER NOT NULL,
+        new_goal INTEGER NOT NULL,
+        created_at BIGINT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS customer_enrollments (
+        token_hash TEXT PRIMARY KEY,
+        member_id TEXT NOT NULL REFERENCES members (id),
+        created_at BIGINT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS operations_member ON operations (member_id, created_at);
+    `);
+
+    await client.query("COMMIT");
+  } catch (e) {
+    await client.query("ROLLBACK");
+    throw e;
+  } finally {
+    client.release();
+  }
+
+  // Seed a demo member if none exist
+  const { rows } = await db.query("SELECT id FROM members LIMIT 1");
+  if (!rows.length) {
+    await db.query(
+      "INSERT INTO members (id, name, apple_token) VALUES ($1, $2, $3)",
+      [randomUUID(), "Test Coffee Customer", randomBytes(32).toString("hex")],
+    );
+  }
+}
+
+export async function member(
+  db: DB,
+  id: string,
+): Promise<Member | undefined> {
+  const { rows } = await db.query<Member>(
+    "SELECT members.*, programme.stamp_goal FROM members CROSS JOIN programme WHERE members.id = $1",
+    [id],
+  );
+  return rows[0];
+}
+
+export async function transact(
   db: DB,
   id: string,
   kind: string,
@@ -87,99 +144,162 @@ export function transact(
 ) {
   if (!["purchase", "redeem"].includes(kind))
     throw new Error("Unsupported loyalty action");
-  db.exec("BEGIN IMMEDIATE");
+
+  const client = await db.connect();
   try {
-    const old = db.prepare("SELECT * FROM operations WHERE key=?").get(key);
-    if (old) {
+    await client.query("BEGIN");
+
+    const { rows: existing } = await client.query(
+      "SELECT * FROM operations WHERE key = $1",
+      [key],
+    );
+    if (existing.length) {
+      const old = existing[0];
       if (old.member_id !== id || old.kind !== kind)
         throw new Error("Idempotency key already used for another action");
-      db.exec("COMMIT");
+      await client.query("COMMIT");
       return JSON.parse(old.result as string);
     }
-    const m = member(db, id);
+
+    const { rows: mRows } = await client.query<Member>(
+      "SELECT members.*, programme.stamp_goal FROM members CROSS JOIN programme WHERE members.id = $1 FOR UPDATE",
+      [id],
+    );
+    const m = mRows[0];
     if (!m) throw new Error("Membership not found");
-    if (kind === "redeem" && m.rewards < 1)
-      throw new Error("No reward available");
+    if (kind === "redeem" && m.rewards < 1) throw new Error("No reward available");
+
     const goal = m.stamp_goal || 8;
     const stamps = kind === "purchase" ? (m.stamps + 1) % goal : m.stamps;
     const rewards =
       kind === "purchase"
         ? m.rewards + (m.stamps === goal - 1 ? 1 : 0)
         : m.rewards - 1;
-    db.prepare("UPDATE meta SET value=value+1 WHERE key='revision'").run();
-    const version = Number(
-      db.prepare("SELECT value FROM meta WHERE key='revision'").get()!.value,
+
+    const { rows: vRows } = await client.query<{ value: string }>(
+      "UPDATE meta SET value = value + 1 WHERE key = 'revision' RETURNING value",
     );
-    db.prepare(
-      "UPDATE members SET stamps=?,rewards=?,version=? WHERE id=?",
-    ).run(stamps, rewards, version, id);
-    for (const provider of process.env.APPLE_WALLET_ENABLED === "true"
-      ? ["google", "apple"]
-      : ["google"])
-      db.prepare(
-        "INSERT INTO jobs(member_id,provider,version) VALUES(?,?,?)",
-      ).run(id, provider, version);
+    const version = Number(vRows[0].value);
+
+    await client.query(
+      "UPDATE members SET stamps = $1, rewards = $2, version = $3 WHERE id = $4",
+      [stamps, rewards, version, id],
+    );
+
+    const providers =
+      process.env.APPLE_WALLET_ENABLED === "true"
+        ? ["google", "apple"]
+        : ["google"];
+    for (const provider of providers) {
+      await client.query(
+        "INSERT INTO jobs (member_id, provider, version) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
+        [id, provider, version],
+      );
+    }
+
     const result = { id, stamps, rewards, version, stampGoal: goal };
-    db.prepare(
-      "INSERT INTO operations(key,member_id,kind,result,actor,created_at) VALUES(?,?,?,?,?,?)",
-    ).run(key, id, kind, JSON.stringify(result), actor, Date.now());
-    db.exec("COMMIT");
+    await client.query(
+      "INSERT INTO operations (key, member_id, kind, result, actor, created_at) VALUES ($1, $2, $3, $4, $5, $6)",
+      [key, id, kind, JSON.stringify(result), actor, Date.now()],
+    );
+
+    await client.query("COMMIT");
     return result;
   } catch (e) {
-    db.exec("ROLLBACK");
+    await client.query("ROLLBACK");
     throw e;
+  } finally {
+    client.release();
   }
 }
 
-export function enroll(db: DB, name: string) {
+export async function enroll(db: DB, name: string): Promise<Member> {
   if (
     typeof name !== "string" ||
     name.trim().length < 1 ||
     name.trim().length > 80
   )
     throw new Error("Customer name must contain 1–80 characters");
+
   const id = randomUUID();
-  db.prepare("INSERT INTO members(id,name,apple_token) VALUES(?,?,?)").run(
-    id,
-    name.trim(),
-    randomBytes(32).toString("hex"),
+  await db.query(
+    "INSERT INTO members (id, name, apple_token) VALUES ($1, $2, $3)",
+    [id, name.trim(), randomBytes(32).toString("hex")],
   );
-  return member(db, id)!;
+  return (await member(db, id))!;
 }
 
-export function setGoal(db: DB, goal: number, actor: string) {
+export async function setGoal(
+  db: DB,
+  goal: number,
+  actor: string,
+): Promise<{ stampGoal: number }> {
   if (!Number.isInteger(goal) || goal < 2 || goal > 100)
     throw new Error("Choose a whole number between 2 and 100");
-  db.exec("BEGIN IMMEDIATE");
+
+  const client = await db.connect();
   try {
-    const old = Number(
-      db.prepare("SELECT stamp_goal FROM programme").get()!.stamp_goal,
+    await client.query("BEGIN");
+
+    const { rows: progRows } = await client.query<{ stamp_goal: string }>(
+      "SELECT stamp_goal FROM programme FOR UPDATE",
     );
-    if (db.prepare("SELECT 1 FROM members WHERE stamps>=? LIMIT 1").get(goal))
+    const old = Number(progRows[0].stamp_goal);
+
+    const { rows: blocking } = await client.query(
+      "SELECT 1 FROM members WHERE stamps >= $1 LIMIT 1",
+      [goal],
+    );
+    if (blocking.length)
       throw new Error(
         "Cannot lower the goal below current customer progress. Finish those stamp cycles first.",
       );
+
     if (old !== goal) {
-      db.prepare("UPDATE programme SET stamp_goal=? WHERE id=1").run(goal);
-      db.prepare(
-        "INSERT INTO programme_changes(actor,old_goal,new_goal,created_at) VALUES(?,?,?,?)",
-      ).run(actor, old, goal, Date.now());
-      db.prepare("UPDATE meta SET value=value+1 WHERE key='revision'").run();
-      const version = Number(
-        db.prepare("SELECT value FROM meta WHERE key='revision'").get()!.value,
+      await client.query("UPDATE programme SET stamp_goal = $1 WHERE id = 1", [
+        goal,
+      ]);
+      await client.query(
+        "INSERT INTO programme_changes (actor, old_goal, new_goal, created_at) VALUES ($1, $2, $3, $4)",
+        [actor, old, goal, Date.now()],
       );
-      db.prepare("UPDATE members SET version=?").run(version);
-      for (const provider of process.env.APPLE_WALLET_ENABLED === "true"
-        ? ["google", "apple"]
-        : ["google"])
-        db.prepare(
-          "INSERT INTO jobs(member_id,provider,version) SELECT id,?,? FROM members",
-        ).run(provider, version);
+      const { rows: vRows } = await client.query<{ value: string }>(
+        "UPDATE meta SET value = value + 1 WHERE key = 'revision' RETURNING value",
+      );
+      const version = Number(vRows[0].value);
+      await client.query("UPDATE members SET version = $1", [version]);
+
+      const providers =
+        process.env.APPLE_WALLET_ENABLED === "true"
+          ? ["google", "apple"]
+          : ["google"];
+      for (const provider of providers) {
+        await client.query(
+          "INSERT INTO jobs (member_id, provider, version) SELECT id, $1, $2 FROM members ON CONFLICT DO NOTHING",
+          [provider, version],
+        );
+      }
     }
-    db.exec("COMMIT");
+
+    await client.query("COMMIT");
     return { stampGoal: goal };
   } catch (e) {
-    db.exec("ROLLBACK");
+    await client.query("ROLLBACK");
     throw e;
+  } finally {
+    client.release();
+  }
+}
+
+/** Acquire a client for manual transaction use (worker/scripts). */
+export async function withClient<T>(
+  db: DB,
+  fn: (client: PoolClient) => Promise<T>,
+): Promise<T> {
+  const client = await db.connect();
+  try {
+    return await fn(client);
+  } finally {
+    client.release();
   }
 }

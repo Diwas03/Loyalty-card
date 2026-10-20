@@ -3,97 +3,135 @@ import { member } from "./db.js";
 import { readiness } from "./config.js";
 import { updateGoogle } from "./google.js";
 import { pushApple } from "./apple.js";
+
 export async function runOne(
   db: DB,
   deliver?: (provider: string, id: string) => Promise<void>,
-) {
-  // Single worker, durable lease permits recovery after a crash. BEGIN IMMEDIATE also prevents competing workers claiming the same row.
-  db.exec("BEGIN IMMEDIATE");
-  const job = db
-    .prepare(
-      "SELECT * FROM jobs j WHERE (status IN ('pending','retry','blocked') OR status='working') AND next_at<=? AND NOT EXISTS(SELECT 1 FROM jobs active WHERE active.member_id=j.member_id AND active.provider=j.provider AND active.status='working' AND active.next_at>?) ORDER BY id LIMIT 1",
+): Promise<boolean> {
+  // Claim one ready job atomically using a CTE with FOR UPDATE SKIP LOCKED.
+  const { rows } = await db.query<{
+    id: string;
+    member_id: string;
+    provider: string;
+    attempts: string;
+  }>(`
+    WITH claimed AS (
+      SELECT j.id FROM jobs j
+      WHERE j.status IN ('pending', 'retry', 'blocked', 'working')
+        AND j.next_at <= $1
+        AND NOT EXISTS (
+          SELECT 1 FROM jobs active
+          WHERE active.member_id = j.member_id
+            AND active.provider = j.provider
+            AND active.status = 'working'
+            AND active.next_at > $1
+        )
+      ORDER BY j.id
+      LIMIT 1
+      FOR UPDATE SKIP LOCKED
     )
-    .get(Date.now(), Date.now());
-  if (!job) {
-    db.exec("COMMIT");
-    return false;
-  }
-  db.prepare("UPDATE jobs SET status='working',next_at=? WHERE id=?").run(
-    Date.now() + 120000,
-    job.id as number,
-  );
-  db.exec("COMMIT");
+    UPDATE jobs SET status = 'working', next_at = $2
+    FROM claimed WHERE jobs.id = claimed.id
+    RETURNING jobs.id, jobs.member_id, jobs.provider, jobs.attempts
+  `, [Date.now(), Date.now() + 120000]);
+
+  if (!rows.length) return false;
+
+  const job = rows[0];
+
   try {
-    const provider = String(job.provider),
-      id = String(job.member_id);
-    if (deliver) await deliver(provider, id);
-    else {
-      if (
-        job.provider === "apple" &&
-        process.env.APPLE_WALLET_ENABLED !== "true"
-      ) {
-        db.prepare(
-          "UPDATE jobs SET status='disabled',error='Apple Wallet is optional and disabled' WHERE id=?",
-        ).run(job.id as number);
+    const provider = job.provider;
+    const id = job.member_id;
+
+    if (deliver) {
+      await deliver(provider, id);
+    } else {
+      if (provider === "apple" && process.env.APPLE_WALLET_ENABLED !== "true") {
+        await db.query(
+          "UPDATE jobs SET status = 'disabled', error = $1 WHERE id = $2",
+          ["Apple Wallet is optional and disabled", job.id],
+        );
         return true;
       }
+
       if (!readiness()[provider as "google" | "apple"].enabled) {
-        db.prepare(
-          "UPDATE jobs SET status='blocked',error='Credentials missing; no wallet delivery attempted',next_at=? WHERE id=?",
-        ).run(Date.now() + 60000, job.id as number);
+        await db.query(
+          "UPDATE jobs SET status = 'blocked', error = $1, next_at = $2 WHERE id = $3",
+          [
+            "Credentials missing; no wallet delivery attempted",
+            Date.now() + 60000,
+            job.id,
+          ],
+        );
         return true;
       }
-      const m = member(db, id)!;
-      if (provider === "google") await updateGoogle(m);
-      else {
-        const registrations = db
-          .prepare(
-            "SELECT DISTINCT push_token FROM registrations WHERE member_id=?",
-          )
-          .all(id);
+
+      const m = (await member(db, id))!;
+      if (provider === "google") {
+        await updateGoogle(m);
+      } else {
+        const { rows: registrations } = await db.query<{ push_token: string }>(
+          "SELECT DISTINCT push_token FROM registrations WHERE member_id = $1",
+          [id],
+        );
         if (!registrations.length) {
-          db.prepare(
-            "UPDATE jobs SET status='no-device',error='No Apple device registered; current balance will be included when saved' WHERE id=?",
-          ).run(job.id as number);
+          await db.query(
+            "UPDATE jobs SET status = 'no-device', error = $1 WHERE id = $2",
+            [
+              "No Apple device registered; current balance will be included when saved",
+              job.id,
+            ],
+          );
           return true;
         }
         for (const r of registrations) {
-          const status = await pushApple(String(r.push_token));
+          const status = await pushApple(r.push_token);
           if (status === 410)
-            db.prepare("DELETE FROM registrations WHERE push_token=?").run(
-              String(r.push_token),
+            await db.query(
+              "DELETE FROM registrations WHERE push_token = $1",
+              [r.push_token],
             );
         }
       }
     }
-    db.prepare("UPDATE jobs SET status='delivered',error=NULL WHERE id=?").run(
-      job.id as number,
+
+    await db.query(
+      "UPDATE jobs SET status = 'delivered', error = NULL WHERE id = $1",
+      [job.id],
     );
   } catch (e) {
     const attempts = Number(job.attempts) + 1;
     const reason = e instanceof Error ? e.message : "";
-    // Provider status codes are useful; arbitrary parse/file exceptions can contain key material.
     const message =
       /^(Google (Wallet [A-Z]+|authentication) HTTP [0-9]{3}|APNs (HTTP [0-9]{3}|timeout))$/.test(
         reason,
       )
         ? reason
         : "Wallet delivery failed. Check server credentials, network and provider configuration.";
+
     if (job.provider === "google" && message.includes("PATCH HTTP 404")) {
-      db.prepare(
-        "UPDATE jobs SET status='waiting-save',error='Open Add to Google Wallet for this membership to create or repair its card',attempts=? WHERE id=?",
-      ).run(attempts, job.id as number);
+      await db.query(
+        "UPDATE jobs SET status = 'waiting-save', error = $1, attempts = $2 WHERE id = $3",
+        [
+          "Open Add to Google Wallet for this membership to create or repair its card",
+          attempts,
+          job.id,
+        ],
+      );
       return true;
     }
-    db.prepare(
-      "UPDATE jobs SET status=?,attempts=?,next_at=?,error=? WHERE id=?",
-    ).run(
-      attempts >= 12 ? "failed" : "retry",
-      attempts,
-      Date.now() + Math.min(3600000, 1000 * 2 ** Math.min(attempts, 12)),
-      message,
-      job.id as number,
+
+    await db.query(
+      "UPDATE jobs SET status = $1, attempts = $2, next_at = $3, error = $4 WHERE id = $5",
+      [
+        attempts >= 12 ? "failed" : "retry",
+        attempts,
+        Date.now() + Math.min(3600000, 1000 * 2 ** Math.min(attempts, 12)),
+        message,
+        job.id,
+      ],
     );
   }
+
   return true;
 }
