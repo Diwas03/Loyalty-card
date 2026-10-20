@@ -47,8 +47,8 @@ export function object(m: Member) {
       alternateText: "Demo Coffee membership",
     },
     loyaltyPoints: {
-      label: "Coffee stamps (8 earns a reward)",
-      balance: { string: `${m.stamps}/8` },
+      label: `Coffee stamps (${m.stamp_goal || 8} earns a reward)`,
+      balance: { string: `${m.stamps}/${m.stamp_goal || 8}` },
     },
     secondaryLoyaltyPoints: {
       label: "Available free coffees",

@@ -2,9 +2,17 @@ import express from "express";
 import helmet from "helmet";
 import cookieParser from "cookie-parser";
 import { rateLimit } from "express-rate-limit";
-import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
+import { randomBytes, timingSafeEqual } from "node:crypto";
 import QRCode from "qrcode";
-import { type DB, type Member, member, transact } from "./db.js";
+import {
+  type DB,
+  type Member,
+  member,
+  transact,
+  enroll,
+  setGoal,
+} from "./db.js";
+import { verifyPassword } from "./auth.js";
 import { readiness } from "./config.js";
 import { saveGoogle } from "./google.js";
 import { applePass } from "./apple.js";
@@ -19,6 +27,7 @@ const publicMember = (m: Member) => ({
   stamps: m.stamps,
   rewards: m.rewards,
   version: m.version,
+  stampGoal: m.stamp_goal || 8,
 });
 export function createApp(db: DB) {
   const app = express();
@@ -53,45 +62,86 @@ export function createApp(db: DB) {
       res.status(403).json({ error: "Same-origin JSON required" });
       return;
     }
+    if (
+      req.method !== "GET" &&
+      (!req.body || typeof req.body !== "object" || Array.isArray(req.body))
+    ) {
+      res.status(400).json({ error: "JSON object required" });
+      return;
+    }
     next();
   });
   const staff: express.RequestHandler = (req, res, next) => {
     const s = db
-      .prepare("SELECT expires FROM sessions WHERE token=?")
-      .get(req.cookies.staff || "");
+      .prepare("SELECT * FROM sessions WHERE token=?")
+      .get(typeof req.cookies.staff === "string" ? req.cookies.staff : "");
     if (!s || Number(s.expires) < Date.now()) {
       res.status(401).json({ error: "Staff sign-in required" });
       return;
     }
+    if (
+      s.username === "legacy" &&
+      db.prepare("SELECT 1 FROM staff_accounts LIMIT 1").get()
+    ) {
+      res.status(401).json({ error: "Sign in with your named staff account" });
+      return;
+    }
+    const account =
+      s.username === "legacy"
+        ? undefined
+        : db
+            .prepare("SELECT role,enabled FROM staff_accounts WHERE username=?")
+            .get(String(s.username));
+    if (s.username !== "legacy" && !account?.enabled) {
+      res.status(401).json({ error: "Staff account disabled" });
+      return;
+    }
+    res.locals.actor = String(s.username);
+    res.locals.role = s.username === "legacy" ? "owner" : account!.role;
     next();
   };
   app.post(
     "/api/login",
     rateLimit({ windowMs: 60000, limit: 5 }),
     (req, res) => {
-      const hash = process.env.STAFF_PASSWORD_HASH;
-      if (!hash) {
+      const username =
+        typeof req.body.username === "string"
+          ? req.body.username.toLowerCase().trim()
+          : "legacy";
+      const hasAccounts =
+        Number(
+          db.prepare("SELECT COUNT(*) AS n FROM staff_accounts").get()!.n,
+        ) > 0;
+      const account = db
+        .prepare("SELECT * FROM staff_accounts WHERE username=? AND enabled=1")
+        .get(username);
+      // The shared PoC password stops working once named staff accounts exist.
+      const hash =
+        account?.password_hash ||
+        (!hasAccounts && username === "legacy"
+          ? process.env.STAFF_PASSWORD_HASH
+          : undefined);
+      if (!hash && !hasAccounts && !process.env.STAFF_PASSWORD_HASH) {
         res.status(503).json({
-          error: "Staff login disabled: configure STAFF_PASSWORD_HASH",
+          error:
+            "Staff login disabled: configure STAFF_PASSWORD_HASH or run npm run staff-account",
         });
         return;
       }
-      const [salt, expected] = hash.split(":");
       if (
-        typeof req.body.password !== "string" ||
-        req.body.password.length > 200 ||
-        !salt ||
-        !expected ||
-        !safe(scryptSync(req.body.password, salt, 32).toString("hex"), expected)
+        !verifyPassword(
+          req.body.password,
+          String(hash || "00000000000000000000000000000000:" + "0".repeat(64)),
+        )
       ) {
-        res.status(401).json({ error: "Invalid password" });
+        res.status(401).json({ error: "Invalid username or password" });
         return;
       }
+      db.prepare("DELETE FROM sessions WHERE expires<?").run(Date.now());
       const token = randomBytes(32).toString("hex");
-      db.prepare("INSERT INTO sessions VALUES(?,?)").run(
-        token,
-        Date.now() + 8 * 3600000,
-      );
+      db.prepare(
+        "INSERT INTO sessions(token,expires,username) VALUES(?,?,?)",
+      ).run(token, Date.now() + 8 * 3600000, username);
       res.cookie("staff", token, {
         httpOnly: true,
         sameSite: "strict",
@@ -117,10 +167,22 @@ export function createApp(db: DB) {
       return;
     }
     res.json(
-      publicMember(db.prepare("SELECT * FROM members LIMIT 1").get() as Member),
+      publicMember(
+        member(
+          db,
+          String(db.prepare("SELECT id FROM members LIMIT 1").get()!.id),
+        )!,
+      ),
     );
   });
-  app.get("/api/config", (_req, res) => res.json(readiness()));
+  app.get("/api/config", (_req, res) =>
+    res.json({
+      ...readiness(),
+      stampGoal: Number(
+        db.prepare("SELECT stamp_goal FROM programme").get()!.stamp_goal,
+      ),
+    }),
+  );
   app.get("/api/members/:id", (req, res) => {
     const m = member(db, String(req.params.id));
     if (!m) {
@@ -140,6 +202,71 @@ export function createApp(db: DB) {
         await QRCode.toBuffer(String(req.params.id), { width: 320, margin: 3 }),
       );
   });
+  app.get("/api/staff/programme", staff, (_req, res) =>
+    res.json({
+      stampGoal: Number(
+        db.prepare("SELECT stamp_goal FROM programme").get()!.stamp_goal,
+      ),
+    }),
+  );
+  app.post("/api/staff/programme", staff, (req, res) => {
+    if (res.locals.role !== "owner") {
+      res.status(403).json({ error: "Owner access required" });
+      return;
+    }
+    try {
+      res.json(setGoal(db, req.body.stampGoal, res.locals.actor));
+    } catch (e) {
+      res.status(409).json({ error: (e as Error).message });
+    }
+  });
+  app.get("/healthz", (_req, res) => {
+    try {
+      db.prepare("SELECT 1").get();
+      res.json({ status: "ok" });
+    } catch {
+      res.status(503).json({ status: "unavailable" });
+    }
+  });
+  app.get("/api/staff/me", staff, (_req, res) =>
+    res.json({ username: res.locals.actor, role: res.locals.role }),
+  );
+  app.get("/api/staff/members", staff, (req, res) => {
+    const q = String(req.query.q || "").slice(0, 80);
+    res.json(
+      db
+        .prepare(
+          "SELECT members.id,name,stamps,rewards,stamp_goal AS stampGoal FROM members CROSS JOIN programme WHERE instr(lower(name),lower(?))>0 OR members.id=? ORDER BY members.rowid DESC LIMIT 50",
+        )
+        .all(q, q),
+    );
+  });
+  app.post("/api/staff/enroll", staff, (req, res) => {
+    try {
+      const m = enroll(db, req.body.name);
+      res.status(201).json(publicMember(m));
+    } catch (e) {
+      res.status(400).json({ error: (e as Error).message });
+    }
+  });
+  app.post("/api/staff/jobs/:job/retry", staff, (req, res) => {
+    if (res.locals.role !== "owner") {
+      res.status(403).json({ error: "Owner access required" });
+      return;
+    }
+    const result = db
+      .prepare(
+        "UPDATE jobs SET status='pending',next_at=0,error=NULL WHERE id=? AND status IN ('retry','blocked','waiting-save','failed')",
+      )
+      .run(String(req.params.job));
+    if (!result.changes) {
+      res
+        .status(409)
+        .json({ error: "Job is not retryable or is already running" });
+      return;
+    }
+    res.json({ ok: true });
+  });
   app.get("/api/staff/members/:id", staff, (req, res) => {
     const m = member(db, String(req.params.id));
     if (!m) {
@@ -148,9 +275,15 @@ export function createApp(db: DB) {
     }
     res.json({
       ...publicMember(m),
+      history: db
+        .prepare(
+          "SELECT kind,result,actor,created_at FROM operations WHERE member_id=? ORDER BY rowid DESC LIMIT 50",
+        )
+        .all(m.id)
+        .map((row) => ({ ...row, result: JSON.parse(String(row.result)) })),
       deliveries: db
         .prepare(
-          "SELECT provider,version,status,attempts,error,next_at FROM jobs WHERE member_id=? ORDER BY id DESC LIMIT 20",
+          "SELECT id,provider,version,status,attempts,error,next_at FROM jobs WHERE member_id=? ORDER BY id DESC LIMIT 20",
         )
         .all(m.id),
     });
@@ -174,11 +307,12 @@ export function createApp(db: DB) {
       return;
     }
     try {
-      res.json(transact(db, id, action, key));
+      res.json(transact(db, id, action, key, res.locals.actor));
     } catch (e) {
       res.status(409).json({ error: (e as Error).message });
     }
   });
+  app.use("/wallet", rateLimit({ windowMs: 60000, limit: 15 }));
   app.get("/wallet/google/:id", async (req, res) => {
     if (!readiness().google.enabled) {
       res
@@ -194,7 +328,15 @@ export function createApp(db: DB) {
       return;
     }
     try {
-      res.set("Cache-Control", "no-store").redirect(await saveGoogle(m));
+      const link = await saveGoogle(m);
+      db.prepare(
+        "INSERT OR REPLACE INTO wallet_issuance VALUES(?,'google',?)",
+      ).run(m.id, Date.now());
+      // Reopening a save link also repairs a missing object and wakes any old 404 retries.
+      db.prepare(
+        "UPDATE jobs SET status='pending',next_at=0 WHERE member_id=? AND provider='google' AND status IN ('waiting-save','retry','blocked','failed')",
+      ).run(m.id);
+      res.set("Cache-Control", "no-store").redirect(link);
     } catch {
       res
         .status(502)
@@ -314,9 +456,20 @@ export function createApp(db: DB) {
   app.post("/apple/v1/log", (_req, res) => res.sendStatus(200)); // Do not retain potentially sensitive device diagnostics.
   app.get("/staff.html", (req, res, next) => {
     const session = db
-      .prepare("SELECT expires FROM sessions WHERE token=?")
-      .get(req.cookies.staff || "");
-    if (!session || Number(session.expires) < Date.now()) {
+      .prepare("SELECT * FROM sessions WHERE token=?")
+      .get(typeof req.cookies.staff === "string" ? req.cookies.staff : "");
+    if (
+      !session ||
+      Number(session.expires) < Date.now() ||
+      (session.username === "legacy" &&
+        !!db.prepare("SELECT 1 FROM staff_accounts LIMIT 1").get()) ||
+      (session.username !== "legacy" &&
+        !db
+          .prepare(
+            "SELECT 1 FROM staff_accounts WHERE username=? AND enabled=1",
+          )
+          .get(String(session.username)))
+    ) {
       res.redirect("/login.html");
       return;
     }
@@ -336,7 +489,15 @@ export function createApp(db: DB) {
       res: express.Response,
       _next: express.NextFunction,
     ) => {
-      console.error(err.message);
+      const status = (err as Error & { status?: number }).status;
+      if (status === 400 || status === 413) {
+        res.status(status).json({
+          error:
+            status === 413 ? "Request body too large" : "Invalid JSON request",
+        });
+        return;
+      }
+      console.error("Request failed:", err.name);
       res.status(500).json({ error: "Internal error" });
     },
   );

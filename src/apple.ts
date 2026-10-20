@@ -35,7 +35,7 @@ export function applePass(m: Member) {
   pass.primaryFields.push({
     key: "stamps",
     label: "COFFEE STAMPS",
-    value: `${m.stamps} / 8`,
+    value: `${m.stamps} / ${m.stamp_goal || 8}`,
     changeMessage: "Coffee stamp progress is now %@",
   });
   pass.secondaryFields.push({
@@ -47,8 +47,7 @@ export function applePass(m: Member) {
   pass.backFields.push({
     key: "terms",
     label: "Programme",
-    value:
-      "One paid coffee earns one stamp. Eight stamps issue a free coffee. Redeeming does not earn stamps.",
+    value: `One paid coffee earns one stamp. ${m.stamp_goal || 8} stamps issue a free coffee. Redeeming does not earn stamps.`,
   });
   pass.setBarcodes({
     format: "PKBarcodeFormatQR",

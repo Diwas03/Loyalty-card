@@ -21,7 +21,15 @@ export function readiness() {
       enabled: !missing(googleKeys).length,
       missing: missing(googleKeys),
     },
-    apple: { enabled: !missing(appleKeys).length, missing: missing(appleKeys) },
+    apple: {
+      enabled:
+        process.env.APPLE_WALLET_ENABLED === "true" &&
+        !missing(appleKeys).length,
+      missing:
+        process.env.APPLE_WALLET_ENABLED === "true"
+          ? missing(appleKeys)
+          : ["Apple Wallet is optional and disabled"],
+    },
   };
 }
 export function baseUrl() {

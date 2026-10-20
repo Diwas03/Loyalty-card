@@ -11,9 +11,9 @@ export async function runOne(
   db.exec("BEGIN IMMEDIATE");
   const job = db
     .prepare(
-      "SELECT * FROM jobs WHERE (status IN ('pending','retry','blocked') OR status='working') AND next_at<=? ORDER BY id LIMIT 1",
+      "SELECT * FROM jobs j WHERE (status IN ('pending','retry','blocked') OR status='working') AND next_at<=? AND NOT EXISTS(SELECT 1 FROM jobs active WHERE active.member_id=j.member_id AND active.provider=j.provider AND active.status='working' AND active.next_at>?) ORDER BY id LIMIT 1",
     )
-    .get(Date.now());
+    .get(Date.now(), Date.now());
   if (!job) {
     db.exec("COMMIT");
     return false;
@@ -28,6 +28,15 @@ export async function runOne(
       id = String(job.member_id);
     if (deliver) await deliver(provider, id);
     else {
+      if (
+        job.provider === "apple" &&
+        process.env.APPLE_WALLET_ENABLED !== "true"
+      ) {
+        db.prepare(
+          "UPDATE jobs SET status='disabled',error='Apple Wallet is optional and disabled' WHERE id=?",
+        ).run(job.id as number);
+        return true;
+      }
       if (!readiness()[provider as "google" | "apple"].enabled) {
         db.prepare(
           "UPDATE jobs SET status='blocked',error='Credentials missing; no wallet delivery attempted',next_at=? WHERE id=?",
@@ -62,12 +71,27 @@ export async function runOne(
     );
   } catch (e) {
     const attempts = Number(job.attempts) + 1;
+    const reason = e instanceof Error ? e.message : "";
+    // Provider status codes are useful; arbitrary parse/file exceptions can contain key material.
+    const message =
+      /^(Google (Wallet [A-Z]+|authentication) HTTP [0-9]{3}|APNs (HTTP [0-9]{3}|timeout))$/.test(
+        reason,
+      )
+        ? reason
+        : "Wallet delivery failed. Check server credentials, network and provider configuration.";
+    if (job.provider === "google" && message.includes("PATCH HTTP 404")) {
+      db.prepare(
+        "UPDATE jobs SET status='waiting-save',error='Open Add to Google Wallet for this membership to create or repair its card',attempts=? WHERE id=?",
+      ).run(attempts, job.id as number);
+      return true;
+    }
     db.prepare(
-      "UPDATE jobs SET status='retry',attempts=?,next_at=?,error=? WHERE id=?",
+      "UPDATE jobs SET status=?,attempts=?,next_at=?,error=? WHERE id=?",
     ).run(
+      attempts >= 12 ? "failed" : "retry",
       attempts,
       Date.now() + Math.min(3600000, 1000 * 2 ** Math.min(attempts, 12)),
-      e instanceof Error ? e.message.slice(0, 200) : "Wallet delivery failed",
+      message,
       job.id as number,
     );
   }

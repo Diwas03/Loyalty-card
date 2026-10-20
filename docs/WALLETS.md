@@ -1,5 +1,7 @@
 # Real wallet setup and protocol notes
 
+Pilot update: Google Wallet is the default. Apple endpoints are retained, but issuance and new Apple jobs require `APPLE_WALLET_ENABLED=true`. Google object-not-found now pauses a job as `waiting-save`; reopening the original save link wakes it. The original Google Wallet test was reported successful by the owner; this is not independent verification of the new pilot or native iOS support.
+
 ## Documentation evidence
 
 Reviewed 2026-10-19:

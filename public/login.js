@@ -5,6 +5,7 @@ document.querySelector("#login").onsubmit = async (e) => {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
+        username: document.querySelector("#username").value.trim() || "legacy",
         password: document.querySelector("#password").value,
       }),
     });

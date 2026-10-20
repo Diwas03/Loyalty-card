@@ -1,62 +1,130 @@
-# Demo Coffee Shop · Wallet proof of concept
+# Demo Coffee Shop · Single-shop loyalty pilot
 
-A single-shop, single-seeded-member TypeScript app. The backend is authoritative: one paid coffee earns one stamp; stamp eight issues one free-coffee reward and resets stamps to zero. Unused rewards remain when the next cycle starts. Redemption consumes one reward and never earns stamps. The membership UUID, Google object ID, and Apple serial number remain stable.
+A Google Wallet first coffee-shop pilot built with TypeScript, Express and SQLite. Customers get a private browser card and a real Google Wallet save link; staff enroll customers, scan QRs, record coffees and redeem rewards. The server holds the official balance. A separate durable worker handles wallet delivery without reversing purchases when a provider fails.
 
-**Working locally:** browser membership card/QR, protected staff UI/API, persisted transactions and idempotency, atomic redemption, durable background delivery/retries, Apple registration/discovery authentication, signed pass generation with synthetic certificates, and Google JWT/REST contract tests. **Not verified:** live issuance, push delivery, or any physical phone. No mock wallet button claims success. The actual wallet buttons are disabled until their server configuration is present; a configured button is not proof of valid credentials or approval.
+Google Wallet testing was reported successful by the project owner. This version's new workflows have been tested locally; they have **not** been retested on a physical phone. An iPhone opening a Google save link is not proof of native Apple Wallet support. Use the browser card on iOS unless your intended iOS wallet experience has been verified. Apple signing/callback code is retained as an optional separate integration, disabled by default.
 
-## Run locally
+## What is included
 
-Requirements: Node **24.x**, npm; OpenSSL and Python 3 for signing-integrity tests. No database service, Docker, cloud service, SMS or payment setup is needed.
+- Responsive customer card, stamp indicators, reward count and QR; automatic balance refresh every five seconds while visible.
+- Staff workspace with name/ID search, staff-assisted customer enrollment, private card links, camera scanning and manual lookup.
+- Individual staff and owner accounts; password reset, session revocation and account disabling through local operator commands. Existing shared-password installs remain compatible until the first named account is created.
+- Timestamped purchase/redemption history with staff attribution. Duplicate request keys replay the original result; concurrent redemption is atomic.
+- Owner-only stamp goal (2–100), default **eight**. Existing stamps/rewards are retained; a reduction is rejected if any customer has progress at or above the proposed goal. All cards get update jobs after a change.
+- Persistent outbox, bounded exponential retries, actionable delivery status and owner retry controls. Google 404 pauses as `waiting-save`; reopening the save link repairs/creates the object and wakes pending deliveries.
+- Consistent SQLite backup command and automatic, transactional migration from the original PoC. Existing IDs, QR values, wallet object IDs, pass tokens, balances and rewards are preserved.
+
+This is a pilot, not a claim of production certification. It intentionally excludes payments, referrals, multiple shops, NFC and native apps. Enrollment is staff-assisted; no SMS, email or customer password is collected.
+
+## New local setup
+
+Requirements: Node **24.x**, npm, and OpenSSL/Python 3 for the synthetic signing tests.
 
 ```sh
-npm ci --cache /tmp/npm-cache
-cp .env.example .env  # only if .env does not already exist
-npm run staff-password
+npm ci
+# Copy only when .env does not already exist:
+cp .env.example .env
+npm run staff-account -- owner owner
+npm run staff-account -- barista staff
 npm run typecheck
 npm test
 npm start
 ```
 
-In another terminal, from the repository root:
+PowerShell uses `Copy-Item .env.example .env` instead of `cp` if preferred. Account commands prompt locally with hidden input and store salted scrypt hashes in SQLite. No default password is supplied. Never paste passwords or keys into chat.
+
+In a separate terminal, from the same directory and with the same `.env`:
 
 ```sh
 npm run worker
 ```
 
-Open the local server on port 3000. The customer page seeds and displays one test member. Keep its private `/?member=...` link. `/staff.html` redirects to staff sign-in. Look up the membership UUID (printed below the QR), or scan with the camera, then explicitly confirm a purchase or redemption. Browser camera access requires HTTPS or localhost and user permission. The staff page shows the official backend balance separately from delivery jobs; re-run lookup to refresh status. Refresh the customer page to update its browser card.
+Open `http://localhost:3000/staff.html`, sign in as `owner`, and create a customer. Share the generated private customer link. Confirm each staff action explicitly. One paid qualifying coffee earns one stamp; reaching the configured goal issues a reward and resets stamp progress. Redeeming consumes a reward and never earns a stamp. Unused rewards remain into new cycles.
 
-Run `npm run dev` for server watch mode. Restart the worker after changing its code or `.env`. Commands resolve files relative to the repository root. Both processes **must use the same DB_PATH**. Keep **one worker** for this PoC; it serializes deliveries. Do not run multiple independent app deployments with separate copies of the database.
+Customer links and QRs use random UUIDs; no balance, contact data or staff credential is encoded. A QR identifies a customer but authorizes no mutations. Use a nickname if the customer does not want their display name on a private card.
 
-Without a password hash, staff login fails closed. There is no built-in password. The local helper prompts without displaying input and saves a salted scrypt hash in ignored `.env`; it does not save the plaintext password. Never put any password, service account JSON, certificate private key or passphrase into chat or Git.
+## Upgrade your existing Windows installation
 
-## Infrastructure and data
+1. Stop the server and worker with Ctrl+C. Keep your `.env`, credential files and database.
+2. Back up the **whole `data` directory**, including any SQLite WAL/SHM files, to a private folder outside the repository while both processes are stopped. For a custom DB_PATH, back up that database and its sidecar files instead.
+3. Pull the changes and install:
 
-Express serves a small static UI and REST endpoints. Node's SQLite driver provides a disk-backed WAL database (default `data/coffee.sqlite`). SQLite transactions contain the balance change, idempotency result, and two outbox jobs, so wallet failures cannot roll back a paid coffee. `BEGIN IMMEDIATE` serializes competing mutations across SQLite connections. No Redis or external database is needed for one-shop testing. Back up the database and its WAL consistently (stop both processes first, or use SQLite's backup mechanism). Deleting the database creates a different member and invalidates old cards.
+   ```powershell
+   git pull origin main
+   npm ci
+   npm run typecheck
+   npm test
+   npm run staff-account -- owner owner
+   npm run staff-account -- barista staff
+   npm start
+   ```
 
-The random UUID in all three QRs contains no contact info, balance or staff secret. It is a bearer identifier for the customer card; treat its link as private. It authorizes **no** purchases or redemptions. Customer details are a placeholder display name only. Staff uses an eight-hour, server-side session, HttpOnly/SameSite cookies, secure cookies on HTTPS, login rate limiting, JSON-only mutations and origin checks. Every staff mutation also requires an explicit confirmation and a stable `Idempotency-Key`. A network retry of the same action in the same tab reuses its key, retained across reloads in sessionStorage until success. Resolve an ambiguous action before choosing another action or switching tabs; a separate tab has a separate key. Check the balance before starting a new request after losing that tab's state. For this PoC there is one shared staff account, no account management or audit UI.
+4. Start `npm run worker` in another terminal. Sign in with the new named account. The previous shared password (`STAFF_PASSWORD_HASH`) no longer authenticates once any named account exists; legacy sessions are revoked. You may remove the old hash from `.env` after checking named login.
+5. Reopen the **same private customer link** and verify the same progress and saved Google card. Do not delete `data/coffee.sqlite` to resolve a login or update issue.
 
-`operations` is an immutable request/result ledger. It prevents duplicate submission of the **same request key**, not two distinct staff confirmations of the same physical coffee. An eventual POS integration should use its sale ID as the durable idempotency key.
+Migration runs on first open by the server, worker or account command. Original transaction history has no reliable timestamps or actor data; it is shown as an earlier record by `legacy`, without inventing dates. New history includes the real operator and time. Keep your pre-upgrade backup if rollback is necessary; older code cannot use the new schema unchanged.
 
-## Wallet integration and configuration
+## Operating accounts and backups
 
-See [account setup and official references](docs/WALLETS.md) and [test checklist](docs/TESTING.md). `.env.example` contains blank credential placeholders only. Credentials are loaded exclusively by the server/worker. Browser responses never contain Apple's pass authentication token or signing keys. The authentication token is necessarily embedded in the signed Apple pass and is used only by Wallet's web-service protocol.
+```sh
+# Create an account or reset its password/role; prior sessions are revoked:
+npm run staff-account -- alice staff
+npm run staff-account -- owner owner
+# Disable a departed staff member and revoke their sessions:
+npm run staff-disable -- alice
+# Create a consistent snapshot (default ignored data/backups/):
+npm run backup
+# Or choose a private destination that does not already exist:
+npm run backup -- D:/WalletBackups/coffee.sqlite
+```
 
-Google uses one LoyaltyClass and one LoyaltyObject per member, an RS256 server-signed save URL, and PATCH on the existing object. Apple serves a CMS-signed store-card archive with QR/stamps/rewards and `application/vnd.apple.pkpass`; its device registration, update discovery, authenticated pass retrieval and deregistration endpoints are implemented. The worker sends empty-payload HTTP/2 APNs pushes with the pass certificate; Wallet then discovers and fetches current pass data. Saving/downloading another archive is **not** an automatic-update test.
+Do not disable the last enabled owner. The reserved username `legacy` cannot be created. Operator CLI commands require local access to the server's database; they are not public account-registration endpoints. In the UI staff can enroll/find customers and record coffees/redemptions. Only owners can change the stamp goal or manually retry wallet jobs. Sessions expire after eight hours and disabled/reset accounts lose access immediately.
 
-The public HTTPS origin and signing identity must remain stable once a pass is installed. On HTTPS the anonymous seed-discovery API is disabled by default: get the seed's private URL locally before setting PUBLIC_BASE_URL, or read only its ID using the command in the checklist. `DEMO_PUBLIC_CUSTOMER=true` deliberately exposes this demo membership to everyone with the test origin; do not enable it on a public deployment. Do not deploy or buy a service as part of these instructions without making that decision yourself.
+Backups contain customer IDs, password hashes, session tokens and Apple pass tokens: restrict access and never commit or share them. Restore only with server/worker stopped, preserve the current files first, and remove stale WAL/SHM sidecars from the database being replaced. Test restores on a separate private copy before relying on a backup.
 
-## Queue semantics
+## Wallet configuration and device checks
 
-Run `npm run worker` alongside the server. Failed attempts retry exponentially from 2 seconds up to one hour, indefinitely. Missing credentials are marked `blocked` and checked every minute. `working` jobs carry a two-minute crash-recovery lease. Pending/retry state persists across process restarts. Deliveries read the latest backend balance rather than replaying old balance snapshots. Google may return 404/retry before the object has first been issued; opening its real save link creates it and allows later retries to succeed.
+Follow [account setup](docs/WALLETS.md), [device checklist](docs/TESTING.md) and [.env.example](.env.example). Use forward slashes for quoted Windows paths:
 
-`delivered` means Google accepted a REST update or APNs accepted the push requests, **not that a phone refreshed**. `no-device` means no Apple device was registered, so nothing was pushed; the latest balance is included on initial save. APNs 410 removes expired device registrations. Repeated pushes are harmless update hints. After a partial Apple push failure, all remaining registered devices can receive another hint on retry. Apple update discovery uses a monotonic global database revision, not a timestamp; initial registration discovers the current revision. Pass retrieval always returns a freshly signed current archive (HTTP 200, including on conditional requests) rather than risking a stale 304 during rapid same-second purchases. `/apple/v1/log` accepts and discards diagnostics to avoid retaining sensitive device data.
+```dotenv
+GOOGLE_ISSUER_ID=your_real_issuer_id
+GOOGLE_SERVICE_ACCOUNT_FILE="D:/WalletSecrets/google-wallet.json"
+PUBLIC_BASE_URL=https://your-real-test-origin
+APPLE_WALLET_ENABLED=false
+```
 
-## Validation and limitations
+Real keys remain outside the repository. Do not copy literal example values into a live setup. Missing configuration disables real saving; configured fields alone do not prove credentials or approval are valid. The current Google implementation requires a service-account JSON key; keyless impersonation is not implemented.
 
-`npm test` currently executes 10 meaningful tests: duplicate earning; rollover/reward retention; concurrent redemption through separate worker-thread connections using the real transaction function; staff authorization/confirmation/origin enforcement; durable failure/retry after reopening SQLite; Apple registration/discovery/removal; explicit disabled wallet routes and QR output; Apple archive hashes/CMS signature and stable identity; Google signed JWT and update payloads; blocked jobs with missing credentials.
+Google uses the original `${issuerId}.demo_coffee` LoyaltyClass and `${issuerId}.${membershipUUID}` LoyaltyObject IDs. It signs save JWTs server-side and PATCHes the existing object; reopening a save link does not create a new membership. The stamp goal is supplied per object. For Apple, explicitly set `APPLE_WALLET_ENABLED=true` and all signing configuration before testing; Apple requires its own certificates and real-device automatic-update verification.
 
-Synthetic Apple CA/signing certificates and a stubbed Google HTTP provider exist only inside tests and temporary directories. They do **not** create usable phone wallet passes. Test files remove those temporary keys. No Apple Developer membership, Google issuer approval, credentials, public callback origin or physical device was supplied, so live end-to-end behavior is unverified.
+Use a stable public HTTPS origin for real devices, public logo access and Apple callbacks. Quick tunnels are suitable only for short tests: changing the URL requires updating `.env` and restarting both processes, and old Apple passes may retain their old callback URL. The app hides anonymous seed lookup on HTTPS (`DEMO_PUBLIC_CUSTOMER=false`), so use the private membership URL from staff. The customer homepage explains how to obtain a card rather than exposing another customer's link.
 
-Official Google-maintained REST sample code was retrieved and reviewed. Direct Google/Apple documentation requests were denied by the cloud proxy; current console steps and Apple's current documentation could not be independently verified here. Exact source links, inspected revision and verification limitations are in `docs/WALLETS.md`.
+For a compiled deployment, `npm run build`, then `npm run start:production` and `npm run worker:production` from the repository root. Keep `public/`, `assets/` and runtime dependencies alongside `dist/`. Server/worker handle SIGINT/SIGTERM so SQLite connections close cleanly; interrupted leased deliveries recover after the lease expires.
 
-No deployment was performed. Real-device callbacks require a user-provided public HTTPS test origin with a valid TLS certificate. APNs additionally needs outbound HTTP/2 connectivity and certificate authentication. A proxy supporting only ordinary fetch/HTTP/1.1 may not support this APNs client: verify from your intended test host. This is a one-member integration experiment, not a production loyalty platform.
+No public deployment or paid service has been created. Host one app and one worker against the same persistent SQLite file; do not use separate ephemeral filesystem copies. GET `/healthz` checks database availability, not provider health. The worker must be monitored independently. Restrict network access and configure a trusted reverse proxy before public production use; no arbitrary forwarded-IP headers are trusted.
+
+## Delivery semantics
+
+- `pending` / `working`: queued or leased for two minutes for crash recovery.
+- `blocked`: credentials missing; checked again every minute.
+- `waiting-save`: Google returned object-not-found; open the customer's real save link. Reopening it wakes failed/retry/blocked Google jobs for that member.
+- `retry`: failed provider delivery, exponential delay from two seconds to one hour.
+- `failed`: 12 failed attempts; an owner can retry after fixing the cause. The retry control does not record another purchase or erase the attempt count.
+- `delivered`: provider accepted the update/push, **not confirmation of a device refresh**.
+- `no-device`: no Apple registration to notify. `disabled`: historical Apple job when Apple is off.
+
+Purchase and outbox creation commit together. Jobs read the latest official balance and do not replay old balance snapshots. A live lease prevents later jobs for the same member/provider from overtaking the active one. Run exactly one worker for this pilot; Apple operations across many devices can exceed the lease and need a stronger distributed delivery design before scaling.
+
+## Verification
+
+```sh
+npm run typecheck
+npm test
+# Optional headless browser test; one-time browser installation:
+npx playwright install chromium
+npm run test:browser
+```
+
+An existing Chromium installation can be used with `CHROMIUM_PATH` (PowerShell: `$env:CHROMIUM_PATH="C:/path/to/chrome.exe"`). The browser test uses an isolated in-memory database and tests login, enrollment, eight coffees, reward redemption, owner programme changes, history automatic customer refresh, a lost-response retry and a definitive rejection. It does not contact Google or simulate real camera hardware.
+
+**16 automated tests pass**, plus the Chromium workflow. Coverage includes legacy migration/reopen, reward policy, duplicate submissions, concurrent redemption, authorization/roles, revoked sessions, delivery failure isolation, Google 404 recovery, retry budget and delivery ordering. Google signing tests use stubbed HTTP; Apple signing tests use disposable synthetic certificates. See the [checklist and evidence](docs/TESTING.md) for the exact verification boundary and remaining real-device work.

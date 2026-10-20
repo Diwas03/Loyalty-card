@@ -3,28 +3,35 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>Demo Coffee membership</title>
+    <title>Your coffee card · Demo Coffee Shop</title>
     <link rel="stylesheet" href="/style.css" />
     <script src="/customer.js" defer></script>
   </head>
-  <body>
+  <body class="customer-page">
     <nav>
-      <a href="/">Customer card</a><a href="/staff.html">Staff testing</a>
+      <a href="/">☕ Demo Coffee Shop</a><a href="/staff.html">Staff sign in</a>
     </nav>
-    <h1>Demo Coffee Shop</h1>
-    <p>One paid coffee, one stamp. Eight stamps, one free coffee.</p>
+    <header>
+      <p class="eyebrow">GOOD COFFEE. SOMETHING TO LOOK FORWARD TO.</p>
+      <h1>Your next coffee<br />gets you closer.</h1>
+      <p id="terms">
+        One paid coffee, one stamp. Collect stamps for a free coffee.
+      </p>
+    </header>
     <div id="message" role="status"></div>
     <div id="card"></div>
-    <section>
-      <h2>Save your card</h2>
+    <section id="save" class="save-section" hidden>
+      <h2>Your card, always with you.</h2>
       <button id="google" disabled>Add to Google Wallet</button>
-      <p id="google-status"></p>
-      <button id="apple" disabled>Add to Apple Wallet</button>
-      <p id="apple-status"></p>
-      <p class="muted">
-        The browser card above uses your official backend balance. No wallet
-        delivery is simulated.
-      </p>
+      <p id="google-status" class="muted"></p>
+      <div id="apple-option" hidden>
+        <button id="apple" disabled>Add to Apple Wallet</button>
+        <p id="apple-status"></p>
+      </div>
+      <small
+        >Your browser card is always available from this private link. Wallet
+        refreshes may take a little longer.</small
+      >
     </section>
   </body>
 </html>

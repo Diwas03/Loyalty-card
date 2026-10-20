@@ -23,7 +23,7 @@ test("duplicate paid coffee is applied exactly once, including queued deliveries
   const first = transact(db, m.id, "purchase", key);
   assert.deepEqual(transact(db, m.id, "purchase", key), first);
   assert.equal(member(db, m.id)!.stamps, 1);
-  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM jobs").get()!.n, 2);
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM jobs").get()!.n, 1);
   assert.throws(() => transact(db, m.id, "redeem", key));
   db.close();
 });
