@@ -1,7 +1,7 @@
 import { waitUntil } from "@vercel/functions";
 import { createHostedApp } from "../src/hosted-app.js";
 import { hostedPool } from "../src/hosted-db.js";
-import { initializeHosted } from "../src/hosted-runtime.js";
+import { initializeHosted, startupFailure } from "../src/hosted-runtime.js";
 import type { Request, Response } from "express";
 let ready: Promise<ReturnType<typeof createHostedApp>> | undefined;
 async function prepare() {
@@ -28,6 +28,7 @@ export default async function handler(req: Request, res: Response) {
       .status(503)
       .json({
         error: "Hosted database is not configured. Complete the hosting setup.",
+        reason: startupFailure(error),
       });
   }
 }

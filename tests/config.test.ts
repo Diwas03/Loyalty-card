@@ -4,6 +4,14 @@ import assert from "node:assert/strict";
 import { databaseOptions, databaseUrl } from "../src/database-config.js";
 import { publicBaseUrl } from "../src/config.js";
 import { verifyPassword } from "../src/auth.js";
+import { startupFailure } from "../src/hosted-runtime.js";
+test("startup diagnostics categorize database failures without exposing driver messages", () => {
+  assert.equal(startupFailure({ code: "28P01", message: "secret-password" }), "DATABASE_AUTHENTICATION_FAILED");
+  assert.equal(startupFailure({ code: "SELF_SIGNED_CERT_IN_CHAIN" }), "DATABASE_TRUST_CERTIFICATE_REQUIRED");
+  assert.equal(startupFailure({ code: "42501" }), "DATABASE_SETUP_PERMISSION_REQUIRED");
+  assert.equal(startupFailure({ code: "ENOENT" }), "DATABASE_SCHEMA_FILE_MISSING");
+  assert.equal(startupFailure(new Error("secret-connection-string")), "DATABASE_STARTUP_FAILED");
+});
 test("invalid API URL cannot mask the connected PostgreSQL integration", () => {
   const uri = "postgresql://test:placeholder@db.example.com:6543/postgres";
   assert.equal(databaseUrl({ DATABASE_URL: "https://project.supabase.co", POSTGRES_URL: uri }), uri);
