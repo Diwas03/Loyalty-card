@@ -15,7 +15,7 @@
     const shop = await shopResponse.json(),
       session = await sessionResponse.json();
     document.title = "Join " + shop.name;
-    $("nav a").textContent = "☕ " + shop.name;
+    $("nav a").textContent = shop.name;
     $("nav a").href = "/join.html" + shopQuery;
     $("#consent-shop").textContent = shop.name;
     document.documentElement.style.setProperty("--shop-color", shop.color || "#41291d");
@@ -37,12 +37,15 @@
     ready = true;
     button.disabled = false;
   } catch (e) {
+    $("#message").dataset.tone = "error";
     $("#message").textContent = e.message;
   }
   $("#join").onsubmit = async (e) => {
     e.preventDefault();
     if (!ready) return;
     button.disabled = true;
+    const label = button.textContent;
+    button.textContent = "Preparing your card…";
     try {
       const r = await fetch("/api/join", {
         method: "POST",
@@ -59,10 +62,12 @@
       $("#existing").href = data.customerUrl;
       location.assign(data.customerUrl);
     } catch (e) {
+      $("#message").dataset.tone = "error";
       $("#message").textContent =
         e.message +
         " You can retry; this browser will reuse the same membership.";
       button.disabled = false;
+      button.textContent = label;
     }
   };
 })();

@@ -89,7 +89,7 @@ try {
   await card.locator("#accept").check();
   await card.locator("#submit").click();
   await card.waitForURL(url => url.searchParams.has("member"));
-  await card.waitForFunction(() => document.querySelector("nav a")?.textContent === "☕ Browser Roasters");
+  await card.waitForFunction(() => document.querySelector("nav a")?.textContent === "Browser Roasters");
   assert.equal(await card.locator("#card-progress").textContent(), "0 / 8 stamps");
   await customer.close();
   assert.equal(dialogs, 0);

@@ -24,6 +24,8 @@
     "local": "node scripts/local.mjs",
     "local:staff": "node scripts/local.mjs staff",
     "local:stop": "node scripts/local.mjs stop",
+    "test:ui": "node tests/ui-smoke.mjs",
+    "test:pwa": "node tests/pwa-smoke.mjs",
     "test:scanner": "node scripts/run-tests.mjs scanner",
     "wallet:check": "node scripts/check-google-wallet.mjs"
   },

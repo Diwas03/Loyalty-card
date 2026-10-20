@@ -5,10 +5,12 @@ document.querySelector("#register").onsubmit = async (event) => {
   const button = form.querySelector("button");
   const data = Object.fromEntries(new FormData(form));
   if (data.password !== data.confirmPassword) {
+    message.dataset.tone = "error";
     message.textContent = "The passwords do not match.";
     return;
   }
   button.disabled = true;
+  button.textContent = "Creating your shop…";
   try {
     const response = await fetch("/api/setup/owner", {
       method: "POST",
@@ -20,8 +22,10 @@ document.querySelector("#register").onsubmit = async (event) => {
     form.reset();
     location.assign("/login.html?created=1&username=" + encodeURIComponent(result.username));
   } catch (error) {
+    message.dataset.tone = "error";
     message.textContent = error.message;
   } finally {
     button.disabled = false;
+    button.textContent = "Create account";
   }
 };

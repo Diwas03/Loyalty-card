@@ -3,31 +3,36 @@
   <head>
     <meta charset="utf-8" />
     <link rel="manifest" href="/manifest.webmanifest" />
-    <meta name="theme-color" content="#41291d" />
+    <meta name="theme-color" content="#193d32" />
     <link rel="apple-touch-icon" href="/icons/icon-192.png" />
     <script src="/pwa.js" defer></script>
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>Coffee · Staff workspace</title>
+    <link rel="icon" type="image/svg+xml" href="/brand.svg" />
     <link rel="stylesheet" href="/style.css" />
     <script src="/vendor/zxing/zxing-browser.min.js" defer></script>
     <script src="/staff.js" defer></script>
   </head>
-  <body>
-    <nav>
-      <a href="/">☕ Demo Coffee Shop</a
+  <body class="staff-page">
+    <a class="skip-link" href="#main-content">Skip to content</a>
+    <nav aria-label="Main navigation">
+      <a href="/">Loyalty</a
       ><a id="shop-qr-link" href="/shop.html" target="_blank" rel="noopener">Print shop QR</a
       ><span id="identity"></span
       ><button id="logout" class="secondary">Sign out</button>
     </nav>
+    <main id="main-content">
     <header>
-      <p class="eyebrow">BEHIND THE COUNTER</p>
-      <h1>A little coffee.<br />A little more loyalty.</h1>
-      <p>Find a customer, confirm a coffee, and let their card catch up.</p>
+      <p class="eyebrow">YOUR SHOP WORKSPACE</p>
+      <h1>Every visit.<br /><em>A reason to return.</em></h1>
+      <p>Find your regulars, scan a card, and make their next visit count.</p>
+      <a class="button quick-scan" href="#scan-panel">Scan a customer card <span aria-hidden="true">↗</span></a>
     </header>
     <div id="message" role="status" aria-live="polite"></div>
     <div class="workspace">
       <div>
-        <section>
+        <section id="customer-search">
+          <p class="eyebrow">YOUR COMMUNITY</p>
           <h2>Your customers</h2>
           <form id="search">
             <label for="query">Name or membership ID</label>
@@ -59,12 +64,12 @@
             >
           </form>
         </section>
-        <section>
+        <section id="scan-panel">
           <h2>Scan a card</h2>
           <p id="scan-help">Scan a customer card to look up their membership.</p>
           <button id="scan" disabled>Start camera</button
-          ><button id="stop" class="secondary">Stop camera</button
-          ><video id="video" muted playsinline></video>
+          ><button id="stop" class="secondary" hidden>Stop camera</button
+          ><video id="video" muted playsinline hidden></video>
           <form id="lookup">
             <label for="member">Or paste a membership ID</label>
             <div class="row">
@@ -77,9 +82,9 @@
       </div>
       <div>
         <section>
-          <p class="eyebrow">OFFICIAL BACKEND BALANCE</p>
-          <h2 id="customer-name">Choose a customer</h2>
-          <div id="balance" class="balance">No membership selected</div>
+          <p class="eyebrow">CUSTOMER OVERVIEW</p>
+          <h2 id="customer-name">Ready when you are</h2>
+          <div id="balance" class="balance">Search for a customer or scan their card to get started.</div>
           <a id="customer-link" hidden target="_blank" rel="noopener"
             >Open private customer card ↗</a
           >
@@ -98,15 +103,14 @@
           <h2>Recent activity</h2>
           <div id="history">Choose a customer to see activity.</div>
         </section>
-        <section>
-          <h2>Background delivery</h2>
+        <details class="delivery-panel">
+          <summary>Delivery diagnostics</summary>
           <p class="muted">
-            Your ledger is authoritative. Provider acceptance does not confirm a
-            phone refreshed.
+            Review delivery tasks for previously issued wallet passes. Web cards refresh automatically when open.
           </p>
           <div id="delivery">No membership selected.</div>
           <button id="refresh" class="secondary">Refresh customer</button>
-        </section>
+        </details>
         <section id="programme-section" hidden>
           <h2>Programme settings</h2>
           <form id="shop-branding" hidden>
@@ -126,8 +130,7 @@
               /><button>Update goal</button>
             </div>
             <small
-              >Existing stamps and rewards are retained. Changes queue updates
-              for all memberships.</small
+              >Existing stamps and rewards are retained. The new goal appears on customer cards automatically.</small
             >
           </form>
         </section>
@@ -144,5 +147,7 @@
         </section>
       </div>
     </div>
+    </main>
+    <footer class="site-footer"><span>Loyalty<span class="footer-dot">.</span></span><span>Small moments. Lasting rewards.</span></footer>
   </body>
 </html>

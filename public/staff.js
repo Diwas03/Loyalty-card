@@ -49,13 +49,14 @@ async function search() {
   );
   $("#customers").replaceChildren();
   for (const m of rows) {
-    const b = text(
-      "button",
-      `${m.name} · ${m.stamps}/${m.stampGoal || 8} · ${m.rewards} rewards`,
-      "customer-row",
-    );
+    const b = text("button", "", "customer-row");
+    b.append(text("span", m.name, "customer-row-name"));
+    b.append(text("span", `${m.stamps}/${m.stampGoal || 8} stamps · ${m.rewards} rewards`, "customer-row-meta"));
+    b.classList.toggle("is-selected", selected === m.id);
     b.onclick = () => {
       if (busy) return;
+      document.querySelectorAll(".customer-row").forEach((row) => row.classList.remove("is-selected"));
+      b.classList.add("is-selected");
       $("#member").value = m.id;
       lookup().catch((e) => message(e.message));
     };
@@ -252,6 +253,7 @@ $("#scan").onclick = async () => {
     message("Resolve your previous request before scanning another purchase.");
     return;
   }
+  $("#video").hidden = $("#stop").hidden = false;
   const generation = ++scanGeneration;
   let handled = false;
   $("#scan").disabled = true;
@@ -265,6 +267,7 @@ $("#scan").onclick = async () => {
         if (!result || handled || generation !== scanGeneration) return;
         handled = true;
         scanner.stop();
+        $("#video").hidden = $("#stop").hidden = true;
         try {
           const id = result.getText().trim();
           if (!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(id))
@@ -286,12 +289,14 @@ $("#scan").onclick = async () => {
   } catch (error) {
     if (generation === scanGeneration) {
       $("#scan").disabled = false;
+      $("#video").hidden = $("#stop").hidden = true;
       message("Camera unavailable: " + error.message + ". Use manual lookup.");
     }
   }
 };
 $("#stop").onclick = () => {
   ++scanGeneration;
+  $("#video").hidden = $("#stop").hidden = true;
   controls?.stop();
   $("#scan").disabled = !role;
 };
@@ -317,7 +322,7 @@ $("#shop-branding").onsubmit = async (event) => {
   event.preventDefault();
   try {
     const shop = await api("/api/staff/shop", { method: "POST", body: JSON.stringify({ name: $("#shop-name").value, color: $("#shop-color").value }) });
-    $("nav a").textContent = "☕ " + shop.name;
+    $("nav a").textContent = shop.name;
     message("Shop branding saved.");
   } catch (error) { message(error.message); }
 };
@@ -330,7 +335,7 @@ window.addEventListener("pagehide", () => controls?.stop());
     if (me.shopId) {
       $("#shop-qr-link").href = "/shop.html?shop=" + encodeURIComponent(me.shopId);
       const shop = await api("/api/staff/shop");
-      $("nav a").textContent = "☕ " + shop.name;
+      $("nav a").textContent = shop.name;
       $("#shop-name").value = shop.name;
       $("#shop-color").value = shop.color;
       if (role === "owner") $("#shop-branding").hidden = false;

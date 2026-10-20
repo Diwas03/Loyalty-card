@@ -5,6 +5,10 @@ if (parameters.get("created") === "1") {
 }
 document.querySelector("#login").onsubmit = async (e) => {
   e.preventDefault();
+  const button = document.querySelector("#login button");
+  if (button.disabled) return;
+  button.disabled = true;
+  button.textContent = "Signing in…";
   try {
     const r = await fetch("/api/login", {
       method: "POST",
@@ -19,6 +23,10 @@ document.querySelector("#login").onsubmit = async (e) => {
     document.querySelector("#password").value = "";
     location.assign("/staff.html");
   } catch (e) {
+    document.querySelector("#message").dataset.tone = "error";
     document.querySelector("#message").textContent = e.message;
+  } finally {
+    button.disabled = false;
+    button.textContent = "Sign in →";
   }
 };

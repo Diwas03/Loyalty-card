@@ -3,33 +3,51 @@
   <head>
     <meta charset="utf-8" />
     <link rel="manifest" href="/manifest.webmanifest" />
-    <meta name="theme-color" content="#41291d" />
+    <meta name="theme-color" content="#193d32" />
     <link rel="apple-touch-icon" href="/icons/icon-192.png" />
     <script src="/pwa.js" defer></script>
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>Your coffee card · Demo Coffee Shop</title>
+    <title>Your cards · Loyalty</title>
+    <link rel="icon" type="image/svg+xml" href="/brand.svg" />
     <link rel="stylesheet" href="/style.css" />
     <script src="/customer.js" defer></script>
   </head>
-  <body class="customer-page">
-    <nav>
-      <a href="/">☕ Demo Coffee Shop</a><a href="/join.html">Get a card</a
+  <body class="customer-page cards-page">
+    <a class="skip-link" href="#main-content">Skip to content</a>
+    <nav aria-label="Main navigation">
+      <a href="/">Loyalty</a><a href="/" class="nav-active" aria-current="page">My cards</a
       ><a href="/staff.html">Staff sign in</a>
     </nav>
+    <main id="main-content">
     <header>
-      <p class="eyebrow">GOOD COFFEE. SOMETHING TO LOOK FORWARD TO.</p>
-      <h1>Your next coffee<br />gets you closer.</h1>
+      <p class="eyebrow">YOUR EVERYDAY, REWARDED</p>
+      <h1>Good things<br />come <em>full circle.</em></h1>
       <p id="terms">
         One paid coffee, one stamp. Collect stamps for a free coffee.
       </p>
     </header>
-    <div id="message" role="status"></div>
-    <div id="card"></div>
+    <div class="card-layout">
+    <div class="card-column">
+    <div id="message" role="status" aria-live="polite"></div>
+    <div id="card" class="card-library">
+      <div class="empty-state"><span class="empty-icon" aria-hidden="true">✦</span><p class="eyebrow">A LITTLE SOMETHING TO LOOK FORWARD TO</p><h2>Your next favourite ritual.</h2><p>Collect stamps at the places you love.<br />Your cards will feel right at home here.</p><a class="button" href="/join.html">Get your first card <span aria-hidden="true">↗</span></a><small>Already a member? Open your private card link.</small></div>
+    </div>
+    </div>
+    <aside id="home-guide" class="home-guide">
+      <p class="eyebrow">LESS FUSS. MORE FAVOURITES.</p><h2>A good habit.<br />A little extra.</h2>
+      <ol><li><span>01</span><div><strong>Make it yours</strong><p>Scan your shop’s QR and create your free card.</p></div></li><li><span>02</span><div><strong>Show up. Collect stamps.</strong><p>Show your membership QR at the counter.</p></div></li><li><span>03</span><div><strong>Enjoy your reward</strong><p>Keep coming back for a coffee on the house.</p></div></li></ol>
+      <a href="/register.html">Run a shop? Start your loyalty programme ↗</a>
+    </aside>
     <section id="save" class="save-section" hidden>
-      <h2>Your card, always with you.</h2>
+      <span class="install-icon" aria-hidden="true">↗</span>
+      <p class="eyebrow">ONE TAP AWAY</p>
+      <h2>A regular spot.<br />On your home screen.</h2>
       <button id="install-app" hidden>Install loyalty app</button>
       <p id="install-help">On Android, open the browser menu and choose Install app or Add to Home screen. On iPhone, open in Safari, tap Share, then Add to Home Screen.</p>
       <small>Keep your private card link. Your saved cards are available on this device; clearing browser data removes these shortcuts. Internet is required to load your card and current balance.</small>
     </section>
+    </div>
+    </main>
+    <footer class="site-footer"><span>Loyalty<span class="footer-dot">.</span></span><span>Small moments. Lasting rewards.</span></footer>
   </body>
 </html>

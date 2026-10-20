@@ -155,3 +155,11 @@ seconds. Existing wallet endpoints remain for compatibility with issued passes;
 new customers are not sent to Google Wallet and Google credentials are not
 required for the web app. Run `node tests/pwa-smoke.mjs` with Chromium installed
 to verify saved-card reopening, installation UI and the offline fallback.
+
+The interface uses a shared responsive design system in `public/style.css` for
+customer cards, enrollment, authentication, shop posters and staff operations.
+Shop card colors automatically select dark or light text. Customer QR codes stay
+prominent, while legacy delivery diagnostics are collapsed in the workspace.
+`npm run test:ui` checks seven screens at mobile, tablet and desktop widths, login
+error recovery and customer selection, using isolated fixture data. Screenshots
+are written to `/tmp/loyalty-ui`; use `CHROMIUM_PATH` for your Chromium executable.

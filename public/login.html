@@ -3,38 +3,44 @@
   <head>
     <meta charset="utf-8" />
     <link rel="manifest" href="/manifest.webmanifest" />
-    <meta name="theme-color" content="#41291d" />
+    <meta name="theme-color" content="#193d32" />
     <link rel="apple-touch-icon" href="/icons/icon-192.png" />
     <script src="/pwa.js" defer></script>
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>Staff sign in</title>
+    <link rel="icon" type="image/svg+xml" href="/brand.svg" />
     <link rel="stylesheet" href="/style.css" />
     <script src="/login.js" defer></script>
   </head>
   <body class="login-page">
-    <h1>Demo Coffee · Staff sign in</h1>
-    <section>
+    <a class="auth-brand" href="/">Loyalty<span>.</span></a>
+    <main id="main-content">
+    <header class="auth-header"><p class="eyebrow">YOUR SHOP, CONNECTED</p><h1>Welcome back.</h1><p>Sign in to manage your customers and reward every visit.</p></header>
+    <section class="auth-panel">
+      <h2>Staff sign in</h2>
       <form id="login">
         <label
           >Username
           <input
             id="username"
             autocomplete="username"
-            placeholder="legacy"
+            placeholder="Enter your username"
             maxlength="40"
         /></label>
         <label
-          >Staff password
+          >Password
           <input
             id="password"
             type="password"
             autocomplete="current-password"
             required /></label
-        ><button>Sign in</button>
+        ><button>Sign in <span aria-hidden="true">→</span></button>
       </form>
       <p id="message" role="status"></p>
     </section>
     <p><a href="/register.html">Create an account for your shop</a></p>
-    <a href="/">Customer card</a>
+    <a class="back-link" href="/">← Back to your cards</a>
+    </main>
+    <footer class="auth-footer">Loyalty for the places that matter.</footer>
   </body>
 </html>

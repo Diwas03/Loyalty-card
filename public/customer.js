@@ -1,24 +1,27 @@
 (async () => {
   const $ = (s) => document.querySelector(s);
   let id = new URLSearchParams(location.search).get("member");
+  if (id) document.body.classList.add("has-member");
   if (!id) {
     let cards = [];
     try { cards = JSON.parse(localStorage.getItem("loyalty-cards") || "[]"); } catch {}
     if (Array.isArray(cards) && cards.length) {
       $("#card").replaceChildren();
+      document.querySelector("header h1").textContent = "Your favourites. All together.";
       for (const card of cards) {
         if (!/^[a-f0-9-]{36}$/i.test(card.id)) continue;
         const link = document.createElement("a");
         link.href = "/?member=" + encodeURIComponent(card.id);
         link.textContent = card.name;
+        link.setAttribute("aria-label", card.name);
         const row = document.createElement("p");
         row.append(link);
         $("#card").append(row);
       }
-      $("#message").textContent = "Choose your saved card.";
+      $("#message").textContent = "Your saved memberships · choose a card to get started";
       return;
     }
-    $("#message").textContent = "Scan your shop’s QR code to create a card, or open your private card link.";
+    $("#message").textContent = "YOUR CARD COLLECTION";
     return;
   }
   let initial = true;
@@ -34,11 +37,16 @@
       if (!r.ok) throw Error(m.error);
       if (m.shopName) {
         document.title = m.shopName + " loyalty card";
-        $("nav a").textContent = "☕ " + m.shopName;
+        $("nav a").textContent = m.shopName;
         $("nav a").href = "/join.html?shop=" + encodeURIComponent(m.shopId);
         for (const link of document.querySelectorAll('a[href="/join.html"]'))
           link.href = "/join.html?shop=" + encodeURIComponent(m.shopId);
-        document.documentElement.style.setProperty("--shop-color", m.shopColor);
+        const color = /^#[0-9a-f]{6}$/i.test(m.shopColor) ? m.shopColor : "#193d32";
+        document.documentElement.style.setProperty("--shop-color", color);
+        const rgb = color.slice(1).match(/../g).map((part) => parseInt(part, 16) / 255)
+          .map((v) => v <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4);
+        const light = rgb[0] * .2126 + rgb[1] * .7152 + rgb[2] * .0722 > .179;
+        document.documentElement.style.setProperty("--card-ink", light ? "#000000" : "#ffffff");
       }
       if (!id) {
         id = m.id;
@@ -49,6 +57,14 @@
       if (initial) {
         $("#card").replaceChildren();
         $("#card").className = "card";
+        const label = document.createElement("div");
+        label.className = "card-label";
+        const title = document.createElement("span");
+        title.textContent = m.shopName || "Coffee club";
+        const mark = document.createElement("span");
+        mark.textContent = "MEMBER CARD ✦";
+        label.append(title, mark);
+        $("#card").append(label);
         for (const [tag, key] of [
           ["h2", "name"],
           ["h2", "progress"],
@@ -83,15 +99,20 @@
       $("#card-rewards").textContent =
         `${m.rewards} free coffee ${m.rewards === 1 ? "reward" : "rewards"} available`;
       $("#card-stamps").replaceChildren();
+      $("#card-stamps").style.setProperty("--stamp-columns", String(Math.min(m.stampGoal, m.stampGoal <= 12 ? 4 : 8)));
       for (let i = 0; i < m.stampGoal; i++) {
         const n = document.createElement("span");
         n.className = "stamp" + (i < m.stamps ? " filled" : "");
         n.textContent = i < m.stamps ? "✓" : String(i + 1);
         $("#card-stamps").append(n);
       }
+      $("#message").setAttribute("aria-live", "off");
+      $("#message").dataset.tone = "success";
       $("#message").textContent =
-        "Official balance · updated " + new Date().toLocaleTimeString();
+        "● Live balance · updated " + new Date().toLocaleTimeString();
     } catch (e) {
+      $("#message").setAttribute("aria-live", "polite");
+      $("#message").dataset.tone = "error";
       $("#message").textContent = initial
         ? "Open your private membership link, or ask your barista for a card."
         : `Could not refresh. Last displayed balance may be outdated. ${e.message}`;
