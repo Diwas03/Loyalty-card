@@ -1,13 +1,46 @@
 {
   "framework": null,
-  "buildCommand": "npm run build && npm run wallet:check",
+  "buildCommand": "npm run build",
   "outputDirectory": "public",
-  "functions": { "api/index.ts": { "maxDuration": 60, "includeFiles": "supabase/{schema,shops}.sql" } },
+  "functions": {
+    "api/index.ts": {
+      "maxDuration": 60,
+      "includeFiles": "supabase/{schema,shops}.sql"
+    }
+  },
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "/api/index" },
-    { "source": "/wallet/(.*)", "destination": "/api/index" },
-    { "source": "/shop-qr.png", "destination": "/api/index" },
-    { "source": "/healthz", "destination": "/api/index" }
+    {
+      "source": "/api/(.*)",
+      "destination": "/api/index"
+    },
+    {
+      "source": "/wallet/(.*)",
+      "destination": "/api/index"
+    },
+    {
+      "source": "/shop-qr.png",
+      "destination": "/api/index"
+    },
+    {
+      "source": "/healthz",
+      "destination": "/api/index"
+    }
   ],
-  "crons": [{ "path": "/api/cron/wallet-updates", "schedule": "0 0 * * *" }]
+  "crons": [
+    {
+      "path": "/api/cron/wallet-updates",
+      "schedule": "0 0 * * *"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/sw.js",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-cache"
+        }
+      ]
+    }
+  ]
 }

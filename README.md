@@ -140,3 +140,18 @@ An existing Chromium installation can be used with `CHROMIUM_PATH` (PowerShell: 
 Open `/shop.html` to print a **shared shop enrollment QR**; each customer scans it on their own phone, chooses a nickname and is taken to Google's real Add confirmation. Returning browsers reuse their membership without losing stamps. The membership QR inside a card is different: staff scans it to identify that customer.
 
 For **Supabase + Vercel**, follow [the complete hosting and cutover guide](docs/HOSTING.md). `vercel.json` uses the serverless Postgres backend; ordinary `npm start` uses the legacy public-schema Postgres server. Do not deploy SQLite or the indefinite local worker to Vercel. The hosted database schema, importer, hosted staff tools, persistent retry endpoint and minute Cron setup are included. No accounts, hosted projects, paid services or public deployment were created automatically. Do not paste credentials into chat.
+
+### Installable web loyalty cards
+
+The customer flow uses a PWA instead of Google Wallet. Customers open their
+private card link and choose **Install loyalty app** when supported. On iPhone,
+use Safari → Share → Add to Home Screen. The home screen app lists cards opened
+on that device, including memberships at different shops. Keep the private link
+as a backup: clearing browser data removes saved shortcuts. Internet is required
+for QR display and authoritative balances; the service worker never caches
+private cards, staff pages, API responses or QR images. Staff scanning continues
+to award stamps in the database, and open customer cards refresh every five
+seconds. Existing wallet endpoints remain for compatibility with issued passes;
+new customers are not sent to Google Wallet and Google credentials are not
+required for the web app. Run `node tests/pwa-smoke.mjs` with Chromium installed
+to verify saved-card reopening, installation UI and the offline fallback.

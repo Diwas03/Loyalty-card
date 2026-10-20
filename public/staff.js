@@ -124,7 +124,7 @@ async function lookup() {
     $("#delivery").append(row);
   }
   if (!m.deliveries.length)
-    $("#delivery").append(text("p", "No wallet updates queued yet."));
+    $("#delivery").append(text("p", "No delivery tasks queued."));
 }
 $("#programme").onsubmit = async (e) => {
   e.preventDefault();
@@ -139,7 +139,7 @@ $("#programme").onsubmit = async (e) => {
       method: "POST",
       body: JSON.stringify({ stampGoal: Number($("#goal").value) }),
     });
-    message("Programme updated. Wallet updates queued.");
+    message("Programme updated. Customer cards show the new balance when online.");
     await search();
     if (selected) await lookup();
   } catch (e) {
@@ -223,7 +223,7 @@ async function recordAction(action, automatic = false) {
       await search();
       message(scanned
         ? (result.awarded ? "One stamp added. Scan the next paid coffee when ready." : "This card was just scanned. No extra stamp was added. Use Record one paid coffee for another purchase.")
-        : "Saved. Wallet update queued separately.");
+        : "Saved. The customer’s web card refreshes automatically when open.");
     } catch (e) {
       busy = false;
       if (saved) {

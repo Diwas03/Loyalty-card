@@ -1,0 +1,43 @@
+import { chromium } from 'playwright';
+import express from 'express';
+import assert from 'node:assert/strict';
+const app = express();
+const id = '12345678-1234-1234-1234-123456789abc';
+app.get('/api/members/:id', (_req, res) => res.json({ id, name: 'Customer', shopName: 'Test Shop', shopId: 'test', shopColor: '#41291d', stamps: 2, stampGoal: 8, rewards: 0 }));
+app.get('/api/members/:id/qr', (_req, res) => res.redirect('/logo.png'));
+app.use(express.static('public'));
+const server = app.listen(0, '127.0.0.1');
+await new Promise(resolve => server.once('listening', resolve));
+const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH || '/usr/bin/chromium', headless: true, args: ['--no-sandbox'] });
+try {
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  const base = `http://127.0.0.1:${server.address().port}`;
+  await page.goto(`${base}/?member=${id}`);
+  await page.locator('#card-progress').waitFor();
+  assert.equal(await page.locator('#card-progress').textContent(), '2 / 8 stamps');
+  assert.equal(await page.getByText('Add to Google Wallet').count(), 0);
+  await page.evaluate(() => navigator.serviceWorker.ready);
+  const manifest = await (await context.request.get(`${base}/manifest.webmanifest`)).json();
+  assert.equal(manifest.start_url, '/');
+  assert.equal(manifest.display, 'standalone');
+  for (const icon of manifest.icons) assert.equal((await context.request.get(base + icon.src)).status(), 200);
+  await page.goto(base);
+  await page.getByRole('link', { name: 'Test Shop', exact: true }).click();
+  await page.locator('#card-progress').waitFor();
+  assert.equal(new URL(page.url()).searchParams.get('member'), id);
+  await page.evaluate(() => {
+    const event = new Event('beforeinstallprompt');
+    event.prompt = async () => {};
+    event.userChoice = Promise.resolve({ outcome: 'accepted' });
+    window.dispatchEvent(event);
+  });
+  await page.getByRole('button', { name: 'Install loyalty app' }).click();
+  await context.setOffline(true);
+  await page.reload();
+  await page.getByRole('heading', { name: 'Connect to open your loyalty card' }).waitFor();
+  console.log('PWA smoke passed: saved cards, install prompt, manifest/icons and offline fallback.');
+} finally {
+  await browser.close();
+  await new Promise(resolve => server.close(resolve));
+}

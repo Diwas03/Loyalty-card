@@ -1,6 +1,26 @@
 (async () => {
   const $ = (s) => document.querySelector(s);
   let id = new URLSearchParams(location.search).get("member");
+  if (!id) {
+    let cards = [];
+    try { cards = JSON.parse(localStorage.getItem("loyalty-cards") || "[]"); } catch {}
+    if (Array.isArray(cards) && cards.length) {
+      $("#card").replaceChildren();
+      for (const card of cards) {
+        if (!/^[a-f0-9-]{36}$/i.test(card.id)) continue;
+        const link = document.createElement("a");
+        link.href = "/?member=" + encodeURIComponent(card.id);
+        link.textContent = card.name;
+        const row = document.createElement("p");
+        row.append(link);
+        $("#card").append(row);
+      }
+      $("#message").textContent = "Choose your saved card.";
+      return;
+    }
+    $("#message").textContent = "Scan your shop’s QR code to create a card, or open your private card link.";
+    return;
+  }
   let initial = true;
   let loading = false;
   async function refresh() {
@@ -49,17 +69,13 @@
         const note = document.createElement("small");
         note.textContent = "Show this QR to your barista";
         $("#card").append(note);
-        const config = await (await fetch("/api/config")).json();
         $("#save").hidden = false;
-        for (const p of ["google", "apple"]) {
-          const b = $("#" + p);
-          b.disabled = !config[p].enabled;
-          if (p === "apple") $("#apple-option").hidden = !config[p].enabled;
-          $("#" + p + "-status").textContent = config[p].enabled
-            ? "Save this membership to your wallet."
-            : "Wallet saving is not available yet. Your browser card still works.";
-          b.onclick = () => location.assign(`/wallet/${p}/${id}`);
-        }
+        try {
+          const cards = JSON.parse(localStorage.getItem("loyalty-cards") || "[]");
+          const saved = cards.filter((card) => card.id !== id);
+          saved.unshift({ id, name: m.shopName || "Coffee card" });
+          localStorage.setItem("loyalty-cards", JSON.stringify(saved.slice(0, 100)));
+        } catch { /* The private link still works if storage is unavailable. */ }
         initial = false;
       }
       $("#card-name").textContent = m.name;

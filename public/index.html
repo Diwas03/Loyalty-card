@@ -2,6 +2,10 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="theme-color" content="#41291d" />
+    <link rel="apple-touch-icon" href="/icons/icon-192.png" />
+    <script src="/pwa.js" defer></script>
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>Your coffee card · Demo Coffee Shop</title>
     <link rel="stylesheet" href="/style.css" />
@@ -10,7 +14,6 @@
   <body class="customer-page">
     <nav>
       <a href="/">☕ Demo Coffee Shop</a><a href="/join.html">Get a card</a
-      ><a href="/join.html">Get a card</a
       ><a href="/staff.html">Staff sign in</a>
     </nav>
     <header>
@@ -24,16 +27,9 @@
     <div id="card"></div>
     <section id="save" class="save-section" hidden>
       <h2>Your card, always with you.</h2>
-      <button id="google" disabled>Add to Google Wallet</button>
-      <p id="google-status" class="muted"></p>
-      <div id="apple-option" hidden>
-        <button id="apple" disabled>Add to Apple Wallet</button>
-        <p id="apple-status"></p>
-      </div>
-      <small
-        >Your browser card is always available from this private link. Wallet
-        refreshes may take a little longer.</small
-      >
+      <button id="install-app" hidden>Install loyalty app</button>
+      <p id="install-help">On Android, open the browser menu and choose Install app or Add to Home screen. On iPhone, open in Safari, tap Share, then Add to Home Screen.</p>
+      <small>Keep your private card link. Your saved cards are available on this device; clearing browser data removes these shortcuts. Internet is required to load your card and current balance.</small>
     </section>
   </body>
 </html>
