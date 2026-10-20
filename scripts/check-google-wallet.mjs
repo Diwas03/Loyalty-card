@@ -2,7 +2,8 @@ import "dotenv/config";
 import { readFileSync } from "node:fs";
 import { importPKCS8, SignJWT } from "jose";
 
-// Read-only credential verification. Never log tokens, assertions, private keys or raw responses.
+// Read-only credential verification by default. An explicit verification flag can
+// create the platform's default class. Never log tokens, assertions or private keys.
 const report = {};
 try {
   const source = process.env.GOOGLE_SERVICE_ACCOUNT_JSON ||
@@ -32,6 +33,23 @@ try {
       const result = await list.json();
       if (list.ok) report.issuers = (result.resources || []).map(issuer => ({ id: String(issuer.issuerId), name: issuer.name }));
       else report.apiReasons = (result.error?.details || []).map(detail => detail.reason).filter(reason => typeof reason === "string" && /^[A-Z_]+$/.test(reason));
+      if (process.env.GOOGLE_WALLET_VERIFY_CLASS === "true" && /^\d+$/.test(process.env.GOOGLE_ISSUER_ID || "")) {
+        const check = await fetch("https://walletobjects.googleapis.com/walletobjects/v1/loyaltyClass", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token.access_token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            id: process.env.GOOGLE_ISSUER_ID + ".demo_coffee",
+            issuerName: "Loyalty Card", programName: "Loyalty Card Rewards", reviewStatus: "UNDER_REVIEW",
+            programLogo: { sourceUri: { uri: "https://loyalty-card-pi.vercel.app/logo.png" }, contentDescription: { defaultValue: { language: "en-US", value: "Loyalty Card" } } },
+          }), signal: AbortSignal.timeout(12000),
+        });
+        report.classCreation = check.status;
+        if (!check.ok && check.status !== 409) {
+          const failure = await check.json();
+          // This request contains only public platform branding, never a customer or key.
+          report.classError = String(failure.error?.message || "Provider rejected class").slice(0, 500);
+        }
+      }
     } else if (typeof token.error === "string" && /^[a-z_]+$/.test(token.error)) report.oauthError = token.error;
   }
 } catch {
