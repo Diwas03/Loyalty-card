@@ -117,7 +117,7 @@ export async function ensureGoogle(m: Member) {
     await call("/loyaltyClass", "POST", cls);
   } catch (e) {
     if (!String(e).includes("409")) throw e;
-    const { id, reviewStatus, ...branding } = cls;
+    const { id, ...branding } = cls;
     await call(`/loyaltyClass/${id}`, "PATCH", branding);
   }
   try {

@@ -148,6 +148,7 @@ test("Google signed save JWT and stable REST object updates using a local HTTP s
     PUBLIC_BASE_URL: "https://coffee.example",
   });
   const calls: { url: string; method: string; body: unknown }[] = [];
+  const existingClasses = new Set<string>();
   const original = globalThis.fetch;
   globalThis.fetch = async (input, init) => {
     const url = String(input);
@@ -158,6 +159,11 @@ test("Google signed save JWT and stable REST object updates using a local HTTP s
     });
     if (url.includes("oauth2"))
       return new Response(JSON.stringify({ access_token: "local-test-only" }));
+    if (url.endsWith("/loyaltyClass") && init?.method === "POST") {
+      const id = (calls.at(-1)!.body as { id: string }).id;
+      if (existingClasses.has(id)) return new Response("{}", { status: 409 });
+      existingClasses.add(id);
+    }
     return new Response("{}", { status: 200 });
   };
   try {
@@ -204,6 +210,9 @@ test("Google signed save JWT and stable REST object updates using a local HTTP s
     assert.equal(otherClass.hexBackgroundColor, "#224466");
     assert.equal((otherPayload.payload as any).loyaltyObjects[0].classId, otherClass.id);
     assert.notEqual(otherClass.id, cls.id);
+    await saveGoogle(otherShop);
+    const brandingUpdate = calls.find(c => c.method === "PATCH" && c.url.endsWith("/loyaltyClass/" + otherClass.id))!.body as any;
+    assert.equal(brandingUpdate.reviewStatus, "UNDER_REVIEW");
     await db.end();
   } finally {
     delete process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
