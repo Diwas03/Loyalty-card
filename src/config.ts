@@ -18,8 +18,20 @@ export function missing(keys: string[]) {
 export function readiness() {
   return {
     google: {
-      enabled: !missing(googleKeys).length,
-      missing: missing(googleKeys),
+      enabled: !missing(
+        googleKeys.filter(
+          (k) =>
+            k !== "GOOGLE_SERVICE_ACCOUNT_FILE" ||
+            !process.env.GOOGLE_SERVICE_ACCOUNT_JSON,
+        ),
+      ).length,
+      missing: missing(
+        googleKeys.filter(
+          (k) =>
+            k !== "GOOGLE_SERVICE_ACCOUNT_FILE" ||
+            !process.env.GOOGLE_SERVICE_ACCOUNT_JSON,
+        ),
+      ),
     },
     apple: {
       enabled:

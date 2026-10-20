@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { importPKCS8, SignJWT } from "jose";
 import type { Member } from "./db.js";
@@ -5,7 +6,8 @@ import { baseUrl } from "./config.js";
 const api = "https://walletobjects.googleapis.com/walletobjects/v1";
 function account() {
   return JSON.parse(
-    readFileSync(process.env.GOOGLE_SERVICE_ACCOUNT_FILE!, "utf8"),
+    process.env.GOOGLE_SERVICE_ACCOUNT_JSON ||
+      readFileSync(process.env.GOOGLE_SERVICE_ACCOUNT_FILE!, "utf8"),
   );
 }
 async function signed(payload: Record<string, unknown>) {
@@ -16,8 +18,14 @@ async function signed(payload: Record<string, unknown>) {
     .setIssuedAt()
     .sign(await importPKCS8(a.private_key, "RS256"));
 }
+let tokenCache: { key: string; token: string; expires: number } | undefined;
 async function access() {
   const a = account();
+  const cacheKey = createHash("sha256")
+    .update(a.client_email + a.private_key)
+    .digest("hex");
+  if (tokenCache?.key === cacheKey && tokenCache.expires > Date.now())
+    return tokenCache.token;
   const assertion = await signed({
     scope: "https://www.googleapis.com/auth/wallet_object.issuer",
     aud: "https://oauth2.googleapis.com/token",
@@ -29,10 +37,19 @@ async function access() {
       grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
       assertion,
     }),
-    signal: AbortSignal.timeout(20000),
+    signal: AbortSignal.timeout(12000),
   });
   if (!r.ok) throw new Error(`Google authentication HTTP ${r.status}`);
-  return ((await r.json()) as any).access_token;
+  const result = (await r.json()) as {
+    access_token: string;
+    expires_in?: number;
+  };
+  tokenCache = {
+    key: cacheKey,
+    token: result.access_token,
+    expires: Date.now() + (Number(result.expires_in || 3600) - 60) * 1000,
+  };
+  return result.access_token;
 }
 export function object(m: Member) {
   return {
@@ -64,8 +81,9 @@ async function call(path: string, method: string, body?: unknown) {
       "Content-Type": "application/json",
     },
     body: body ? JSON.stringify(body) : undefined,
-    signal: AbortSignal.timeout(20000),
+    signal: AbortSignal.timeout(12000),
   });
+  if (r.status === 401) tokenCache = undefined;
   if (!r.ok) throw new Error(`Google Wallet ${method} HTTP ${r.status}`);
   return r;
 }

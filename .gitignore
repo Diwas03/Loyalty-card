@@ -4,3 +4,6 @@ data/
 secrets/
 *.log
 dist/
+
+.vercel/
+public/vendor/

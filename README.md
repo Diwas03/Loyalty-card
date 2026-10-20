@@ -127,4 +127,10 @@ npm run test:browser
 
 An existing Chromium installation can be used with `CHROMIUM_PATH` (PowerShell: `$env:CHROMIUM_PATH="C:/path/to/chrome.exe"`). The browser test uses an isolated in-memory database and tests login, enrollment, eight coffees, reward redemption, owner programme changes, history automatic customer refresh, a lost-response retry and a definitive rejection. It does not contact Google or simulate real camera hardware.
 
-**16 automated tests pass**, plus the Chromium workflow. Coverage includes legacy migration/reopen, reward policy, duplicate submissions, concurrent redemption, authorization/roles, revoked sessions, delivery failure isolation, Google 404 recovery, retry budget and delivery ordering. Google signing tests use stubbed HTTP; Apple signing tests use disposable synthetic certificates. See the [checklist and evidence](docs/TESTING.md) for the exact verification boundary and remaining real-device work.
+**19 automated tests pass**, plus the Chromium workflow. Coverage includes legacy migration/reopen, reward policy, duplicate submissions, concurrent redemption, authorization/roles, revoked sessions, delivery failure isolation, Google 404 recovery, retry budget and delivery ordering. Google signing tests use stubbed HTTP; Apple signing tests use disposable synthetic certificates. See the [checklist and evidence](docs/TESTING.md) for the exact verification boundary and remaining real-device work.
+
+## Shop QR and online phone testing
+
+Open `/shop.html` to print a **shared shop enrollment QR**; each customer scans it on their own phone, chooses a nickname and is taken to Google's real Add confirmation. Returning browsers reuse their membership without losing stamps. The membership QR inside a card is different: staff scans it to identify that customer.
+
+For **Supabase + Vercel**, follow [the complete hosting and cutover guide](docs/HOSTING.md). `vercel.json` uses the serverless Postgres backend; ordinary `npm start` still uses local SQLite. Do not deploy SQLite or the indefinite local worker to Vercel. The hosted database schema, importer, hosted staff tools, persistent retry endpoint and minute Cron setup are included. No accounts, hosted projects, paid services or public deployment were created automatically. Do not paste credentials into chat.

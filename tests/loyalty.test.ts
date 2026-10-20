@@ -1,3 +1,4 @@
+delete process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID, scryptSync } from "node:crypto";

@@ -10,7 +10,7 @@ npm run typecheck
 npm test
 ```
 
-Current result: **16 tests passed, 0 failed, 0 skipped**. A separate live-process HTTP smoke check also passed: customer page/API, protected staff redirect/login, scanner library delivery, duplicate purchase, worker credential-blocked status, and persistence after restarting the server. Tests use independent isolated databases; they do not change the live seeded member. Google HTTP is stubbed only in its explicitly named test. Apple signature tests create a temporary local CA, verify the archive manifest and CMS signature against that CA, and remove it. That archive is not trusted by Apple Wallet.
+Current result: **19 tests passed, 0 failed, 0 skipped**. A separate live-process HTTP smoke check also passed: customer page/API, protected staff redirect/login, scanner library delivery, duplicate purchase, worker credential-blocked status, and persistence after restarting the server. Tests use independent isolated databases; they do not change the live seeded member. Google HTTP is stubbed only in its explicitly named test. Apple signature tests create a temporary local CA, verify the archive manifest and CMS signature against that CA, and remove it. That archive is not trusted by Apple Wallet.
 
 Covered: duplicate purchase key, eighth-stamp reward, new-cycle unused reward retention, no stamp on redemption, concurrent redemption from distinct database connections using the actual transaction function, staff authentication/confirmation/origin enforcement, durable outbox failure and successful retry, Apple registration authentication/discovery/removal, disabled real issuance, QR generation, signed Google JWT and stable PATCH identity, signed Apple package and unchanged serial/token on update.
 
@@ -115,3 +115,12 @@ Run `npx playwright install chromium` once, then `npm run test:browser` for the 
 - [ ] Repeat the Google real-device checklist after this pilot upgrade. Record precisely what works on iOS; do not equate a save-link webpage with a native iOS wallet card.
 
 Additional local operations smoke passed: SQLite backup/readback, staff disable and last-owner protection, compiled server/worker startup, health request and graceful shutdown. The browser test also exercises an aborted purchase response (safe idempotent retry) and clears a rejected request without leaving staff stuck. Provider errors are sanitized to prevent credential-file parse errors exposing key fragments through delivery status.
+
+
+## Shop QR and hosted Postgres additions
+
+Local self-enrollment tests cover consent, browser-cookie requirements, idempotent retries, distinct customers across browsers, hashed customer cookies and a common shop QR that points to `/join.html`. The Chromium test also exercises first-time and returning shop enrollment (browser-card fallback).
+
+Five integration tests against a real disposable PostgreSQL 17 database pass: atomic duplicate earning/rollover/reward retention/concurrent redemption; hosted enrollment/authentication/history; failure isolation/retry/claim ordering; programme changes and cron authentication; private-schema access denied to an untrusted database role. These are local Postgres tests, not a Supabase project or Vercel deployment. See [hosting guide](HOSTING.md) for account setup and the required minute retry schedule.
+
+Vercel routing, Supabase production TLS, the pg_net/Cron schedule, hosted credentials, and live phone enrollment still require deployment validation. The agent did not create accounts or buy hosting.

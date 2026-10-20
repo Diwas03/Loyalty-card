@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Join the coffee club · Demo Coffee Shop</title>
+    <link rel="stylesheet" href="/style.css" />
+    <script src="/join.js" defer></script>
+  </head>
+  <body class="customer-page">
+    <nav>
+      <a href="/join.html">☕ Demo Coffee Shop</a
+      ><a href="/staff.html">Staff sign in</a>
+    </nav>
+    <header>
+      <p class="eyebrow">YOUR DAILY COFFEE, REWARDED</p>
+      <h1>A coffee today.<br />A treat tomorrow.</h1>
+      <p id="terms">Collect stamps with every paid coffee.</p>
+    </header>
+    <section>
+      <h2 id="heading">Make yourself a regular.</h2>
+      <p id="intro">
+        Create your free loyalty card. No email or phone number required.
+      </p>
+      <form id="join">
+        <label id="name-label" for="name">First name or nickname</label
+        ><input
+          id="name"
+          maxlength="80"
+          autocomplete="given-name"
+          required
+          placeholder="What should we call you?"
+        /><label
+          ><input id="accept" type="checkbox" required class="inline-check" /> I
+          want a Demo Coffee Shop loyalty membership.</label
+        ><button id="submit">Create my card</button>
+      </form>
+      <div id="message" role="status" aria-live="polite"></div>
+      <a id="existing" hidden>Open my browser card</a
+      ><small
+        >Google Wallet will ask you to confirm Add. We cannot save a card
+        without your confirmation. Keep your private card link; clearing browser
+        cookies or using another browser may create a different
+        membership.</small
+      >
+    </section>
+  </body>
+</html>

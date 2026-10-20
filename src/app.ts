@@ -12,8 +12,9 @@ import {
   enroll,
   setGoal,
 } from "./db.js";
+import { join, joinedMember, validJoinToken } from "./join.js";
 import { verifyPassword } from "./auth.js";
-import { readiness } from "./config.js";
+import { readiness, baseUrl } from "./config.js";
 import { saveGoogle } from "./google.js";
 import { applePass } from "./apple.js";
 const safe = (a: string, b: string) => {
@@ -32,6 +33,8 @@ const publicMember = (m: Member) => ({
 export function createApp(db: DB) {
   const app = express();
   app.disable("x-powered-by");
+  // Set only for a trusted, single reverse-proxy hop (e.g. Render). Never trust arbitrary forwarding chains.
+  if (process.env.TRUST_PROXY_HOPS === "1") app.set("trust proxy", 1);
   app.use(
     helmet({
       contentSecurityPolicy: {
@@ -71,6 +74,74 @@ export function createApp(db: DB) {
     }
     next();
   });
+  app.get("/api/shop", (_req, res) => {
+    let joinUrl: string | null = null;
+    try {
+      joinUrl = baseUrl() + "/join.html";
+    } catch {}
+    res.json({
+      name: "Demo Coffee Shop",
+      stampGoal: Number(
+        db.prepare("SELECT stamp_goal FROM programme").get()!.stamp_goal,
+      ),
+      joinUrl,
+      googleEnabled: readiness().google.enabled,
+    });
+  });
+  app.get("/shop-qr.png", async (_req, res) => {
+    let url: string;
+    try {
+      url = baseUrl() + "/join.html";
+    } catch {
+      res
+        .status(503)
+        .send("Set a real PUBLIC_BASE_URL before printing the shop QR");
+      return;
+    }
+    res.type("png").send(await QRCode.toBuffer(url, { width: 720, margin: 4 }));
+  });
+  app.get("/api/customer-session", (_req, res) => {
+    const req = _req;
+    let token = req.cookies.coffee_customer;
+    if (!validJoinToken(token)) {
+      token = randomBytes(32).toString("hex");
+      res.cookie("coffee_customer", token, {
+        httpOnly: true,
+        sameSite: "lax",
+        secure: !!process.env.PUBLIC_BASE_URL,
+        maxAge: 365 * 24 * 3600000,
+        path: "/",
+      });
+    }
+    const m = joinedMember(db, token);
+    res.json({ member: m ? publicMember(m) : null });
+  });
+  app.post(
+    "/api/join",
+    rateLimit({ windowMs: 15 * 60000, limit: 30 }),
+    (req, res) => {
+      if (req.body.accept !== true) {
+        res
+          .status(400)
+          .json({
+            error: "Please confirm you want to create a loyalty membership",
+          });
+        return;
+      }
+      try {
+        const m = join(db, req.cookies.coffee_customer, req.body.name);
+        res.json({
+          member: publicMember(m),
+          customerUrl: "/?member=" + encodeURIComponent(m.id),
+          walletUrl: readiness().google.enabled
+            ? "/wallet/google/" + encodeURIComponent(m.id)
+            : null,
+        });
+      } catch (e) {
+        res.status(400).json({ error: (e as Error).message });
+      }
+    },
+  );
   const staff: express.RequestHandler = (req, res, next) => {
     const s = db
       .prepare("SELECT * FROM sessions WHERE token=?")

@@ -1,3 +1,4 @@
+delete process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
 import { chromium } from "playwright";
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
@@ -5,6 +6,7 @@ import { openDb } from "../src/db.js";
 import { setStaff } from "../src/auth.js";
 import { createApp } from "../src/app.js";
 delete process.env.PUBLIC_BASE_URL;
+delete process.env.GOOGLE_SERVICE_ACCOUNT_FILE;
 const db = openDb(":memory:");
 const password = randomBytes(20).toString("hex");
 setStaff(db, "owner", password, "owner");
@@ -109,6 +111,19 @@ try {
     {},
     { timeout: 12000 },
   );
+  const newcomerContext = await browser.newContext();
+  const newcomer = await newcomerContext.newPage();
+  await newcomer.goto(origin + "/join.html");
+  await newcomer.locator("#name").fill("QR newcomer");
+  await newcomer.locator("#accept").check();
+  await newcomer.locator("#submit").click();
+  await newcomer.waitForURL((u) => u.searchParams.has("member"));
+  const joinedURL = newcomer.url();
+  await newcomer.goto(origin + "/join.html");
+  await newcomer.locator("#submit").click();
+  await newcomer.waitForURL(joinedURL);
+  assert.equal(newcomer.url(), joinedURL);
+  await newcomerContext.close();
   assert.equal(await page.locator("#history .activity").count(), 9);
   assert.ok(
     await card.evaluate(

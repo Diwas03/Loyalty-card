@@ -308,3 +308,31 @@ video:not([src]):not([srcObject]) {
     font-size: 23px;
   }
 }
+.inline-check {
+  width: auto;
+  margin-right: 8px;
+}
+.poster {
+  text-align: center;
+}
+.poster img {
+  max-width: 100%;
+  margin: 15px auto;
+}
+.poster a {
+  overflow-wrap: anywhere;
+}
+@media print {
+  .no-print {
+    display: none;
+  }
+  body {
+    background: white;
+  }
+  .poster {
+    padding: 0;
+  }
+  a {
+    color: inherit;
+  }
+}

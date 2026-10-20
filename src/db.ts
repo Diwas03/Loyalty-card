@@ -43,6 +43,9 @@ export function openDb(path = process.env.DB_PATH || "data/coffee.sqlite") {
       db.exec(`CREATE TABLE members_migrated(id TEXT PRIMARY KEY,name TEXT NOT NULL,stamps INTEGER NOT NULL DEFAULT 0 CHECK(stamps>=0),rewards INTEGER NOT NULL DEFAULT 0 CHECK(rewards>=0),version INTEGER NOT NULL DEFAULT 1,apple_token TEXT NOT NULL);
   INSERT INTO members_migrated SELECT * FROM members; DROP TABLE members; ALTER TABLE members_migrated RENAME TO members;`);
     db.exec(
+      "CREATE TABLE IF NOT EXISTS customer_enrollments(token_hash TEXT PRIMARY KEY,member_id TEXT NOT NULL REFERENCES members(id),created_at INTEGER NOT NULL)",
+    );
+    db.exec(
       "UPDATE meta SET value=MAX(value,COALESCE((SELECT MAX(version) FROM members),1)) WHERE key='revision'",
     );
     db.exec("COMMIT");

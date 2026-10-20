@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Scan to join · Demo Coffee Shop</title>
+    <link rel="stylesheet" href="/style.css" />
+    <script src="/shop.js" defer></script>
+  </head>
+  <body class="customer-page">
+    <header class="poster">
+      <p class="eyebrow">DEMO COFFEE SHOP</p>
+      <h1>Your next coffee<br />gets you closer.</h1>
+      <p>Scan. Join. Collect coffee stamps.</p>
+      <img
+        id="qr"
+        alt="Scan to create your own coffee membership"
+        width="360"
+        hidden
+      />
+      <p id="message" role="status"></p>
+      <a id="join-link" hidden>Join the coffee club</a>
+      <p>
+        Save your card to Google Wallet, then show its membership QR at the
+        counter.
+      </p>
+      <small
+        >No app registration by SMS. No payment required to join. Google Wallet
+        requires you to confirm Add.</small
+      ><button id="print" class="no-print">Print shop QR</button>
+    </header>
+  </body>
+</html>

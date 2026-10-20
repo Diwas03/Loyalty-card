@@ -1,3 +1,4 @@
+delete process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync, writeFileSync, readFileSync, rmSync } from "node:fs";
@@ -156,6 +157,11 @@ test("Google signed save JWT and stable REST object updates using a local HTTP s
   try {
     const db = openDb(":memory:");
     const m = db.prepare("SELECT * FROM members LIMIT 1").get() as Member;
+    process.env.GOOGLE_SERVICE_ACCOUNT_JSON = readFileSync(
+      join(dir, "service.json"),
+      "utf8",
+    );
+    delete process.env.GOOGLE_SERVICE_ACCOUNT_FILE;
     const url = await saveGoogle(m);
     const { payload } = await jwtVerify(
       url.split("/").at(-1)!,
@@ -183,6 +189,7 @@ test("Google signed save JWT and stable REST object updates using a local HTTP s
     assert.equal(patch.body.secondaryLoyaltyPoints.balance.int, 0);
     db.close();
   } finally {
+    delete process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
     globalThis.fetch = original;
     rmSync(dir, { recursive: true });
   }
