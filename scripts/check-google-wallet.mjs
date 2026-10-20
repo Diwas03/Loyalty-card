@@ -50,6 +50,19 @@ try {
           report.classError = String(failure.error?.message || "Provider rejected class").slice(0, 500);
         }
       }
+      if (process.env.GOOGLE_WALLET_VERIFY_CLASS === "true" && /^[a-f0-9-]{36}$/i.test(process.env.GOOGLE_WALLET_VERIFY_MEMBER || "")) {
+        const response = await fetch("https://loyalty-card-pi.vercel.app/api/members/" + process.env.GOOGLE_WALLET_VERIFY_MEMBER, { signal: AbortSignal.timeout(12000) });
+        if (response.ok) {
+          const member = await response.json();
+          try {
+            const { saveGoogle } = await import("../dist/google.js");
+            await saveGoogle({ ...member, shop_id: member.shopId, shop_name: member.shopName, shop_color: member.shopColor, stamp_goal: member.stampGoal });
+            report.saveLink = "verified";
+          } catch (error) {
+            report.saveError = error.providerMessage || "Save-link verification failed";
+          }
+        }
+      }
     } else if (typeof token.error === "string" && /^[a-z_]+$/.test(token.error)) report.oauthError = token.error;
   }
 } catch {

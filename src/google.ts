@@ -88,7 +88,15 @@ async function call(path: string, method: string, body?: unknown) {
     signal: AbortSignal.timeout(12000),
   });
   if (r.status === 401) tokenCache = undefined;
-  if (!r.ok) throw new Error(`Google Wallet ${method} HTTP ${r.status}`);
+  if (!r.ok) {
+    const error = new Error(`Google Wallet ${method} HTTP ${r.status}`) as Error & { providerMessage?: string };
+    try {
+      const failure = await r.json();
+      // Kept separate from the public/audit message; used only by explicit setup verification.
+      error.providerMessage = String(failure.error?.message || "").slice(0, 500);
+    } catch {}
+    throw error;
+  }
   return r;
 }
 export async function ensureGoogle(m: Member) {
