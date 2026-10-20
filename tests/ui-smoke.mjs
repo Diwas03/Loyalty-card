@@ -33,6 +33,7 @@ try {
     await page.setViewportSize({ width, height: 1000 });
     for (const [name, path] of Object.entries({ home: '/', card: `/?member=${id}`, join: '/join.html?shop=default', login: '/login.html', register: '/register.html', staff: '/staff.html', poster: '/shop.html?shop=default' })) {
       if (name === 'home') await page.goto(base + '/');
+      if (name === "staff") await page.evaluate(() => sessionStorage.setItem("loyalty-staff-handoff", JSON.stringify({ token: "a".repeat(64), createdAt: Date.now() })));
       await page.goto(base + path);
       if (name === 'card') await page.locator('#card-progress').waitFor();
       if (name === 'join') await page.waitForFunction(() => !document.querySelector('#submit').disabled);
@@ -49,6 +50,7 @@ try {
   await page.getByText('Incorrect username or password.').waitFor();
   assert.equal(await page.locator('#message').getAttribute('data-tone'), 'error');
   assert.equal(await page.locator('#login button').isEnabled(), true);
+  await page.evaluate(() => sessionStorage.setItem("loyalty-staff-handoff", JSON.stringify({ token: "a".repeat(64), createdAt: Date.now() })));
   await page.goto(base + '/staff.html');
   await page.locator('.customer-row').first().click();
   await page.waitForFunction(() => document.querySelector('#customer-name').textContent === 'Alex Morgan');

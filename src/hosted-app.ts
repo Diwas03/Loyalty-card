@@ -1,3 +1,5 @@
+import { cardDesign, validLogo } from "./card-design.js";
+import { staffToken } from "./staff-session.js";
 import express from "express";
 import helmet from "helmet";
 import cookieParser from "cookie-parser";
@@ -32,7 +34,7 @@ export function createHostedApp(
       },
     }),
   );
-  app.use(express.json({ limit: "32kb" }));
+  app.use(express.json({ limit: "256kb" }));
   app.use(cookieParser());
   app.use((_req, res, next) => {
     res.set("Cache-Control", "no-store");
@@ -65,7 +67,7 @@ export function createHostedApp(
   const staff: express.RequestHandler = async (req, res, next) => {
     try {
       const token =
-        typeof req.cookies.staff === "string" ? req.cookies.staff : "";
+        staffToken(req);
       const row = (
         await db.query(
           "SELECT s.username,a.role,a.enabled,coalesce(p.shop_id,'default') AS shop_id FROM coffee.sessions s LEFT JOIN coffee.staff_accounts a USING(username) LEFT JOIN coffee.staff_profiles p ON p.username=s.username WHERE token_hash=$1 AND expires>$2",
@@ -193,21 +195,17 @@ export function createHostedApp(
     await db.query("INSERT INTO coffee.sessions VALUES($1,$2,$3)", [
       digest(token),
       username,
-      Date.now() + 8 * 3600000,
+      Date.now() + 30 * 60000,
     ]);
-    res.cookie("staff", token, {
-      ...cookie,
-      sameSite: "strict",
-      maxAge: 8 * 3600000,
-    });
-    res.json({ ok: true });
+    res.clearCookie("staff", { path: "/" });
+    res.json({ ok: true, token, expiresIn: 1800 });
   });
   app.get("/api/staff/me", staff, (_req, res) =>
     res.json({ username: res.locals.actor, role: res.locals.role, accountsEnabled: true, scanStamping: true, shopId: res.locals.shopId }),
   );
   app.post("/api/logout", staff, async (req, res) => {
     await db.query("DELETE FROM coffee.sessions WHERE token_hash=$1", [
-      digest(req.cookies.staff),
+      digest(staffToken(req)),
     ]);
     res.clearCookie("staff", cookie).json({ ok: true });
   });
@@ -233,12 +231,12 @@ export function createHostedApp(
   const shopId = (value: unknown) => typeof value === "string" && value ? value : "default";
   const shopToken = (token: string, shop: string) => digest(shop === "default" ? token : token + ":" + shop);
   async function shopInfo(id: string) {
-    return (await db.query("SELECT id,name,color,stamp_goal FROM coffee.shops WHERE id=$1", [id])).rows[0];
+    return (await db.query("SELECT id,name,color,stamp_goal,card_title,tagline,reward_label,stamp_icon,card_style,logo_data FROM coffee.shops WHERE id=$1", [id])).rows[0];
   }
   app.get("/api/shop", async (req, res) => {
     const shop = await shopInfo(shopId(req.query.shop));
     if (!shop) { res.status(404).json({ error: "Shop not found" }); return; }
-    res.json({ id: shop.id, name: shop.name, color: shop.color, stampGoal: shop.stamp_goal,
+    res.json({ ...cardDesign(shop), id: shop.id, name: shop.name, color: shop.color, stampGoal: shop.stamp_goal,
       joinUrl: publicBaseUrl() ? baseUrl() + "/join.html?shop=" + encodeURIComponent(shop.id) : null, googleEnabled: readiness().google.enabled });
   });
   app.get("/shop-qr.png", async (req, res) => {
@@ -253,7 +251,16 @@ export function createHostedApp(
     if (!name || name.length > 80 || typeof req.body.color !== "string" || !/^#[a-fA-F0-9]{6}$/.test(req.body.color)) {
       res.status(400).json({ error: "Enter a shop name and a valid color." }); return;
     }
-    await db.query("UPDATE coffee.shops SET name=$1,color=$2 WHERE id=$3", [name, req.body.color, res.locals.shopId]);
+    const current = await shopInfo(res.locals.shopId);
+    const design = { ...cardDesign(current), ...Object.fromEntries(Object.entries(req.body).filter(([key]) => ["cardTitle", "tagline", "rewardLabel", "stampIcon", "cardStyle", "logoData"].includes(key))) };
+    if (typeof design.cardTitle !== "string" || !design.cardTitle.trim() || design.cardTitle.length > 80 ||
+      typeof design.tagline !== "string" || design.tagline.length > 120 ||
+      typeof design.rewardLabel !== "string" || !design.rewardLabel.trim() || design.rewardLabel.length > 80 ||
+      !["check", "coffee", "star", "heart"].includes(design.stampIcon) ||
+      !["classic", "minimal"].includes(design.cardStyle) || !validLogo(design.logoData)) {
+      res.status(400).json({ error: "Check your card text, design and logo. Use a PNG, JPEG or WebP logo under 130 KB." }); return;
+    }
+    await db.query("UPDATE coffee.shops SET name=$1,color=$2,card_title=$3,tagline=$4,reward_label=$5,stamp_icon=$6,card_style=$7,logo_data=$8 WHERE id=$9", [name, req.body.color, design.cardTitle.trim(), design.tagline.trim(), design.rewardLabel.trim(), design.stampIcon, design.cardStyle, design.logoData, res.locals.shopId]);
     res.json(await shopInfo(res.locals.shopId));
   });
   app.get("/api/customer-session", async (req, res) => {
@@ -354,18 +361,8 @@ export function createHostedApp(
       ).rows,
     );
   });
-  app.post("/api/staff/enroll", staff, async (req, res) => {
-    try {
-      const raw = (
-        await db.query("SELECT coffee.enroll_customer($1,NULL,$2) AS m", [
-          req.body.name,
-          res.locals.shopId,
-        ])
-      ).rows[0].m;
-      res.status(201).json(publicMember(await readMember(db, raw.id)));
-    } catch {
-      res.status(400).json({ error: "Use a nickname of 1–80 characters" });
-    }
+  app.post("/api/staff/enroll", staff, (_req, res) => {
+    res.status(410).json({ error: "Customers create their own cards using the shop QR code." });
   });
   app.get("/api/staff/members/:id", staff, async (req, res) => {
     const id = String(req.params.id),

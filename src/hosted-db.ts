@@ -1,3 +1,4 @@
+import { cardDesign } from "./card-design.js";
 import pg from "pg";
 import { databaseOptions } from "./database-config.js";
 import { createHash } from "node:crypto";
@@ -13,7 +14,7 @@ export type HostedDB = Pick<pg.Pool, "query">;
 export async function readMember(db: HostedDB, id: string) {
   return (
     await db.query(
-      "SELECT m.*,p.stamp_goal,p.name AS shop_name,p.color AS shop_color FROM coffee.members m JOIN coffee.shops p ON p.id=m.shop_id WHERE m.id=$1",
+      "SELECT m.*,p.stamp_goal,p.name AS shop_name,p.color AS shop_color,p.card_title,p.tagline,p.reward_label,p.stamp_icon,p.card_style,p.logo_data FROM coffee.members m JOIN coffee.shops p ON p.id=m.shop_id WHERE m.id=$1",
       [id],
     )
   ).rows[0];
@@ -25,6 +26,7 @@ export async function goal(db: HostedDB, shopId = "default") {
   );
 }
 export const publicMember = (m: any) => ({
+  ...cardDesign(m),
   id: m.id,
   name: m.name,
   stamps: m.stamps,

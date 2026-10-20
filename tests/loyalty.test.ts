@@ -80,7 +80,7 @@ test("unauthorized staff actions, unconfirmed actions and cross-origin login are
   await agent
     .post("/api/login")
     .send({ password: "test-password" })
-    .expect(200);
+    .expect(200).then(response => { agent.set("Authorization", "Bearer " + response.body.token); });
   await agent
     .post(`/api/staff/members/${m.id}/purchase`)
     .set("Idempotency-Key", randomUUID())

@@ -1,3 +1,18 @@
+(() => {
+let staffSession;
+try {
+  const handoff = JSON.parse(sessionStorage.getItem("loyalty-staff-handoff") || "null");
+  sessionStorage.removeItem("loyalty-staff-handoff");
+  if (handoff && Date.now() - handoff.createdAt < 15000 && /^[a-f0-9]{64}$/.test(handoff.token)) staffSession = handoff.token;
+} catch {}
+if (!staffSession) { location.replace("/login.html"); return; }
+const endSession = () => { staffSession = undefined; location.replace("/login.html?expired=1"); };
+let idleTimer;
+const touchSession = () => { clearTimeout(idleTimer); idleTimer = setTimeout(endSession, 15 * 60000); };
+for (const event of ["pointerdown", "keydown"]) document.addEventListener(event, touchSession, { passive: true });
+touchSession();
+setTimeout(endSession, 30 * 60000);
+window.addEventListener("pageshow", (event) => { if (event.persisted) endSession(); });
 const $ = (s) => document.querySelector(s);
 const message = (t) => ($("#message").textContent = t);
 let selected,
@@ -15,7 +30,9 @@ try {
 async function api(url, options = {}) {
   const r = await fetch(url, {
     ...options,
-    headers: { "Content-Type": "application/json", ...options.headers },
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + staffSession, ...options.headers },
+    cache: "no-store",
+    credentials: "omit",
   });
   let j;
   try {
@@ -156,31 +173,12 @@ $("#lookup").onsubmit = (e) => {
   lookup().catch((e) => message(e.message));
 };
 $("#refresh").onclick = () => lookup().catch((e) => message(e.message));
-$("#enroll").onsubmit = async (e) => {
-  e.preventDefault();
-  const b = e.submitter;
-  b.disabled = true;
-  try {
-    const m = await api("/api/staff/enroll", {
-      method: "POST",
-      body: JSON.stringify({ name: $("#name").value }),
-    });
-    $("#name").value = "";
-    $("#member").value = m.id;
-    await lookup();
-    await search();
-    message("Customer created. Share their private customer card link.");
-  } catch (e) {
-    message(e.message);
-  } finally {
-    b.disabled = false;
-  }
-};
 $("#logout").onclick = async () => {
   try {
     await api("/api/logout", { method: "POST", body: "{}" });
     controls?.stop();
-    location.assign("/login.html");
+    staffSession = undefined;
+    location.replace("/login.html");
   } catch (e) {
     message(e.message);
   }
@@ -318,26 +316,70 @@ $("#staff-account").onsubmit = async (event) => {
     button.disabled = false;
   }
 };
-$("#shop-branding").onsubmit = async (event) => {
-  event.preventDefault();
+let logoData = "";
+function designPayload() {
+  return {
+    name: $("#shop-name").value.trim(), color: $("#shop-color").value,
+    cardTitle: $("#card-title").value.trim(), tagline: $("#card-tagline").value,
+    rewardLabel: $("#reward-label").value.trim(), stampIcon: $("#stamp-icon").value,
+    cardStyle: $("#card-style").value, logoData,
+  };
+}
+function updatePreview() {
+  const design = designPayload();
+  CardUI.render($("#card-preview"), { ...design, shopName: design.name || "Your shop", shopColor: design.color, name: "Customer name", stamps: 3, rewards: 0, stampGoal: Number($("#goal").value) || 8 }, { preview: true });
+}
+for (const input of $("#shop-branding").querySelectorAll("input:not([type=file]),select")) input.addEventListener("input", updatePreview);
+$("#goal").addEventListener("input", updatePreview);
+$("#remove-logo").onclick = () => { logoData = ""; $("#shop-logo").value = ""; updatePreview(); };
+$("#shop-logo").onchange = async () => {
+  const file = $("#shop-logo").files[0];
+  if (!file) return;
+  $("#save-design").disabled = true;
+  let bitmap;
   try {
-    const shop = await api("/api/staff/shop", { method: "POST", body: JSON.stringify({ name: $("#shop-name").value, color: $("#shop-color").value }) });
-    $("nav a").textContent = shop.name;
-    message("Shop branding saved.");
-  } catch (error) { message(error.message); }
+    if (!["image/png", "image/jpeg", "image/webp"].includes(file.type) || file.size > 5 * 1024 * 1024) throw Error("Choose a PNG, JPEG or WebP under 5 MB.");
+    bitmap = await createImageBitmap(file);
+    const canvas = document.createElement("canvas");
+    const scale = Math.min(384 / bitmap.width, 384 / bitmap.height, 1);
+    canvas.width = Math.round(bitmap.width * scale); canvas.height = Math.round(bitmap.height * scale);
+    canvas.getContext("2d").drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    const encoded = canvas.toDataURL("image/webp", .85);
+    if (encoded.length > 180000) throw Error("This logo is too detailed. Try a smaller image.");
+    logoData = encoded; updatePreview(); $("#design-message").textContent = "Logo ready. Publish your design to save it.";
+  } catch (error) { $("#design-message").textContent = error.message; $("#shop-logo").value = ""; }
+  finally { bitmap?.close(); $("#save-design").disabled = false; }
 };
-window.addEventListener("pagehide", () => controls?.stop());
+$("#shop-branding").onsubmit = async event => {
+  event.preventDefault();
+  const button = $("#save-design"); button.disabled = true; button.textContent = "Publishing…";
+  try {
+    const shop = await api("/api/staff/shop", { method: "POST", body: JSON.stringify(designPayload()) });
+    $("nav a").textContent = shop.name;
+    $("#design-message").textContent = "Published. Customers’ open cards update automatically.";
+    message("Card design published.");
+  } catch (error) { $("#design-message").textContent = error.message; }
+  finally { button.disabled = false; button.textContent = "Publish card design"; }
+};
+window.addEventListener("pagehide", () => { controls?.stop(); staffSession = undefined; });
 (async () => {
   try {
     const me = await api("/api/staff/me");
     role = me.role;
     scanStamping = me.scanStamping === true;
     if (me.shopId) {
+      $("#customer-join-link").href = "/join.html?shop=" + encodeURIComponent(me.shopId);
       $("#shop-qr-link").href = "/shop.html?shop=" + encodeURIComponent(me.shopId);
       const shop = await api("/api/staff/shop");
       $("nav a").textContent = shop.name;
       $("#shop-name").value = shop.name;
       $("#shop-color").value = shop.color;
+      $("#card-title").value = shop.card_title || "Member card";
+      $("#card-tagline").value = shop.tagline ?? "A little more rewarding.";
+      $("#reward-label").value = shop.reward_label || "Free coffee";
+      $("#stamp-icon").value = shop.stamp_icon || "check";
+      $("#card-style").value = shop.card_style || "classic";
+      logoData = shop.logo_data || "";
       if (role === "owner") $("#shop-branding").hidden = false;
     }
     $("#scan").disabled = false;
@@ -350,10 +392,13 @@ window.addEventListener("pagehide", () => controls?.stop());
       $("#programme-section").hidden = false;
       const p = await api("/api/staff/programme");
       $("#goal").value = p.stampGoal;
+      updatePreview();
     }
     $("#identity").textContent = `${me.username} · ${me.role}`;
     await search();
   } catch (e) {
     message(e.message);
   }
+})();
+
 })();

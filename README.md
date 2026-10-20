@@ -1,4 +1,4 @@
-# Demo Coffee Shop · Single-shop loyalty pilot
+# Loyalty · Multi-shop web wallet
 
 **Quick local start:** with Node 24 and Docker Desktop running, use `npm ci` then `npm run local`. In another terminal, run `npm run local:staff -- owner owner` to choose your password. See [Windows run instructions](docs/RUN_LOCALLY.md). This is an isolated local database; live Vercel/Supabase setup remains separate.
 
@@ -6,14 +6,17 @@
 **Current connected-deployment setup:** read [Automatic setup and migration](docs/AUTOMATIC_SETUP.md). The latest server uses Postgres; older SQLite instructions below apply only to historical installations/imports. Vercel uses the private `coffee` schema, while the preceding server migration created `public` tables. The configuration command preserves source data and refuses ambiguous overwrites. Tests now use disposable real Postgres through Docker, not a database emulator.
 
 
-A Google Wallet first coffee-shop pilot built with TypeScript, Express and SQLite. Customers get a private browser card and a real Google Wallet save link; staff enroll customers, scan QRs, record coffees and redeem rewards. The server holds the official balance. A separate durable worker handles wallet delivery without reversing purchases when a provider fails.
-
-Google Wallet testing was reported successful by the project owner. This version's new workflows have been tested locally; they have **not** been retested on a physical phone. An iPhone opening a Google save link is not proof of native Apple Wallet support. Use the browser card on iOS unless your intended iOS wallet experience has been verified. Apple signing/callback code is retained as an optional separate integration, disabled by default.
+An installable loyalty web app built with TypeScript, Express and PostgreSQL.
+Customers create their own memberships through each shop’s QR and keep cards from
+multiple shops in one device wallet. Staff scan customer QRs, record purchases
+and redeem rewards. Owners customize their own shop’s card with a live preview.
+The database holds the authoritative balance. Previously issued Google and Apple
+Wallet integrations remain available for compatibility; new customers use web cards.
 
 ## What is included
 
 - Responsive customer card, stamp indicators, reward count and QR; automatic balance refresh every five seconds while visible.
-- Staff workspace with name/ID search, staff-assisted customer enrollment, private card links, camera scanning and manual lookup.
+- Staff workspace with name/ID search, customer self-signup links, private card links, camera scanning and manual lookup. Staff-created enrollment is disabled at the API as well as removed from the UI.
 - Individual staff and owner accounts; password reset, session revocation and account disabling through local operator commands. Existing shared-password installs remain compatible until the first named account is created.
 - Timestamped purchase/redemption history with staff attribution. Duplicate request keys replay the original result; concurrent redemption is atomic.
 - Owner-only stamp goal (2–100), default **eight**. Existing stamps/rewards are retained; a reduction is rejected if any customer has progress at or above the proposed goal. All cards get update jobs after a change.
@@ -84,7 +87,7 @@ npm run backup
 npm run backup -- D:/WalletBackups/coffee.sqlite
 ```
 
-Do not disable the last enabled owner. The reserved username `legacy` cannot be created. Operator CLI commands require local access to the server's database; they are not public account-registration endpoints. In the UI staff can enroll/find customers and record coffees/redemptions. Only owners can change the stamp goal or manually retry wallet jobs. Sessions expire after eight hours and disabled/reset accounts lose access immediately.
+Do not disable the last enabled owner. The reserved username `legacy` cannot be created. Operator CLI commands require local access to the server's database; they are not public account-registration endpoints. In the UI staff can find customers and record coffees/redemptions. Customers join using their shop’s QR code. Only owners can customize the card, change the stamp goal or manually retry delivery jobs. Staff authentication uses an in-memory bearer token, with a one-use, 15-second sessionStorage handoff from sign-in that is immediately removed. Cookies never authenticate staff. Reloading, closing or restoring a workspace requires fresh sign-in; inactivity ends the screen session after 15 minutes and the server token expires after 30 minutes. Disabled/reset accounts lose access immediately.
 
 Backups contain customer IDs, password hashes, session tokens and Apple pass tokens: restrict access and never commit or share them. Restore only with server/worker stopped, preserve the current files first, and remove stale WAL/SHM sidecars from the database being replaced. Test restores on a separate private copy before relying on a backup.
 
@@ -133,11 +136,11 @@ npm run test:browser
 
 An existing Chromium installation can be used with `CHROMIUM_PATH` (PowerShell: `$env:CHROMIUM_PATH="C:/path/to/chrome.exe"`). The browser test uses an isolated in-memory database and tests login, enrollment, eight coffees, reward redemption, owner programme changes, history automatic customer refresh, a lost-response retry and a definitive rejection. It does not contact Google or simulate real camera hardware.
 
-**19 automated tests pass**, plus the Chromium workflow. Coverage includes legacy migration/reopen, reward policy, duplicate submissions, concurrent redemption, authorization/roles, revoked sessions, delivery failure isolation, Google 404 recovery, retry budget and delivery ordering. Google signing tests use stubbed HTTP; Apple signing tests use disposable synthetic certificates. See the [checklist and evidence](docs/TESTING.md) for the exact verification boundary and remaining real-device work.
+The automated and Chromium suites cover these workflows. Coverage includes legacy migration/reopen, reward policy, duplicate submissions, concurrent redemption, authorization/roles, revoked sessions, delivery failure isolation, Google 404 recovery, retry budget and delivery ordering. Google signing tests use stubbed HTTP; Apple signing tests use disposable synthetic certificates. See the [checklist and evidence](docs/TESTING.md) for the exact verification boundary and remaining real-device work.
 
 ## Shop QR and online phone testing
 
-Open `/shop.html` to print a **shared shop enrollment QR**; each customer scans it on their own phone, chooses a nickname and is taken to Google's real Add confirmation. Returning browsers reuse their membership without losing stamps. The membership QR inside a card is different: staff scans it to identify that customer.
+Open `/shop.html` to print a **shared shop enrollment QR**; each customer scans it on their own phone, chooses a nickname and opens their web card. Returning browsers reuse their membership without losing stamps. The membership QR inside a card is different: staff scans it to identify that customer.
 
 For **Supabase + Vercel**, follow [the complete hosting and cutover guide](docs/HOSTING.md). `vercel.json` uses the serverless Postgres backend; ordinary `npm start` uses the legacy public-schema Postgres server. Do not deploy SQLite or the indefinite local worker to Vercel. The hosted database schema, importer, hosted staff tools, persistent retry endpoint and minute Cron setup are included. No accounts, hosted projects, paid services or public deployment were created automatically. Do not paste credentials into chat.
 
@@ -163,3 +166,22 @@ prominent, while legacy delivery diagnostics are collapsed in the workspace.
 `npm run test:ui` checks seven screens at mobile, tablet and desktop widths, login
 error recovery and customer selection, using isolated fixture data. Screenshots
 are written to `/tmp/loyalty-ui`; use `CHROMIUM_PATH` for your Chromium executable.
+
+
+### Customer wallet and owner card designer
+
+The root page is the customer wallet; customers never need an owner account.
+Use **Add a shop or card** to scan a shop QR, paste its signup link, or restore a
+private membership link from this app. Each shop keeps a separate membership and
+balance. Wallet shortcuts are stored only on the device; they do not synchronize
+across phones. Use **Save private link** on a card to restore it elsewhere.
+**Remove shortcut** leaves the membership and database balance untouched.
+
+Owners sign in at `/login.html` and use **Programme settings → Card designer**.
+They can publish a shop logo, color, card title, message, reward name, stamp symbol
+and classic/minimal layout. The shared renderer powers both the preview and real
+cards. Changes are scoped to the authenticated owner’s shop. Logos are resized
+in the browser and restricted to raster PNG/JPEG/WebP data URLs; the server
+validates content signatures and size. The additive shop migration preserves
+existing IDs, stamps and rewards. Keep stamp goals separate from visual design:
+changing a goal still follows the existing progress-preservation rules.

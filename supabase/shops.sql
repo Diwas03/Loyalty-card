@@ -58,3 +58,11 @@ BEGIN RETURN coffee.change_shop_goal('default',p_goal,p_actor);END $$;
 ALTER TABLE coffee.shops ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON ALL TABLES IN SCHEMA coffee FROM PUBLIC;
 REVOKE ALL ON ALL FUNCTIONS IN SCHEMA coffee FROM PUBLIC;
+
+-- Web card design is owned by the shop, never by an individual membership.
+ALTER TABLE coffee.shops ADD COLUMN IF NOT EXISTS card_title text NOT NULL DEFAULT 'Member card' CHECK(length(card_title) BETWEEN 1 AND 80);
+ALTER TABLE coffee.shops ADD COLUMN IF NOT EXISTS tagline text NOT NULL DEFAULT 'A little more rewarding.' CHECK(length(tagline)<=120);
+ALTER TABLE coffee.shops ADD COLUMN IF NOT EXISTS reward_label text NOT NULL DEFAULT 'Free coffee' CHECK(length(reward_label) BETWEEN 1 AND 80);
+ALTER TABLE coffee.shops ADD COLUMN IF NOT EXISTS stamp_icon text NOT NULL DEFAULT 'check' CHECK(stamp_icon IN ('check','coffee','star','heart'));
+ALTER TABLE coffee.shops ADD COLUMN IF NOT EXISTS card_style text NOT NULL DEFAULT 'classic' CHECK(card_style IN ('classic','minimal'));
+ALTER TABLE coffee.shops ADD COLUMN IF NOT EXISTS logo_data text NOT NULL DEFAULT '' CHECK(length(logo_data)<=180000);

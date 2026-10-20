@@ -1,4 +1,11 @@
 (() => {
+  // Business sign-in opens separately so the installed app stays a customer wallet.
+  if (matchMedia("(display-mode: standalone)").matches || navigator.standalone) {
+    for (const link of document.querySelectorAll('a[href="/login.html"]')) {
+      link.target = "_blank";
+      link.rel = "noopener";
+    }
+  }
   if ("serviceWorker" in navigator) {
     navigator.serviceWorker.register("/sw.js").catch(() => {});
   }

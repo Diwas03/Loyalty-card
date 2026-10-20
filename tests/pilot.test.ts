@@ -21,7 +21,7 @@ test("named staff enrollment, owner-only settings/retries, audit history, legacy
   await legacy
     .post("/api/login")
     .send({ password: "old-legacy-password" })
-    .expect(200);
+    .expect(200).then(response => { legacy.set("Authorization", "Bearer " + response.body.token); });
   await setStaff(db, "owner", "owner-password-test", "owner");
   await setStaff(db, "barista", "barista-password-test");
   await legacy.get("/api/staff/me").expect(401);
@@ -33,22 +33,13 @@ test("named staff enrollment, owner-only settings/retries, audit history, legacy
   await staff
     .post("/api/login")
     .send({ username: "barista", password: "barista-password-test" })
-    .expect(200);
+    .expect(200).then(response => { staff.set("Authorization", "Bearer " + response.body.token); });
   await request(app)
     .post("/api/staff/enroll")
     .send({ name: "Ada" })
     .expect(401);
-  const created = await staff
-    .post("/api/staff/enroll")
-    .send({ name: "Ada" })
-    .expect(201);
-  const id = created.body.id;
-  assert.match(id, /^[0-9a-f-]{36}$/);
-  assert.equal(created.body.apple_token, undefined);
-  await staff
-    .post("/api/staff/enroll")
-    .send({ name: " ".repeat(3) })
-    .expect(400);
+  await staff.post("/api/staff/enroll").send({ name: "Ada" }).expect(410);
+  const id = (await enroll(db, "Ada")).id;
   const result = await staff.get("/api/staff/members?q=Ada").expect(200);
   assert.equal(result.body[0].id, id);
   await staff.post("/api/staff/programme").send({ stampGoal: 10 }).expect(403);
@@ -69,7 +60,7 @@ test("named staff enrollment, owner-only settings/retries, audit history, legacy
   await owner
     .post("/api/login")
     .send({ username: "owner", password: "owner-password-test" })
-    .expect(200);
+    .expect(200).then(response => { owner.set("Authorization", "Bearer " + response.body.token); });
   await owner.post("/api/staff/programme").send({ stampGoal: 10 }).expect(200);
   assert.equal(
     (await request(app).get("/api/members/" + id)).body.stampGoal,
@@ -125,7 +116,7 @@ test("Google 404 pauses until save instead of retrying forever; owner can recove
   await owner
     .post("/api/login")
     .send({ username: "owner", password: "owner-password-test" })
-    .expect(200);
+    .expect(200).then(response => { owner.set("Authorization", "Bearer " + response.body.token); });
   const { rows: jobRows } = await db.query("SELECT id FROM jobs");
   await owner
     .post("/api/staff/jobs/" + jobRows[0].id + "/retry")

@@ -3,7 +3,7 @@ import express from 'express';
 import assert from 'node:assert/strict';
 const app = express();
 const id = '12345678-1234-1234-1234-123456789abc';
-app.get('/api/members/:id', (_req, res) => res.json({ id, name: 'Customer', shopName: 'Test Shop', shopId: 'test', shopColor: '#41291d', stamps: 2, stampGoal: 8, rewards: 0 }));
+app.get('/api/members/:id', (req, res) => res.json({ id: req.params.id, name: 'Customer', shopName: req.params.id === id ? 'Test Shop' : 'Another Shop', shopId: req.params.id === id ? 'test' : 'another', shopColor: '#41291d', stamps: req.params.id === id ? 2 : 6, stampGoal: 8, rewards: 0 }));
 app.get('/api/members/:id/qr', (_req, res) => res.redirect('/logo.png'));
 app.use(express.static('public'));
 const server = app.listen(0, '127.0.0.1');
@@ -26,6 +26,16 @@ try {
   await page.getByRole('link', { name: 'Test Shop', exact: true }).click();
   await page.locator('#card-progress').waitFor();
   assert.equal(new URL(page.url()).searchParams.get('member'), id);
+  const otherId = '87654321-1234-1234-1234-123456789abc';
+  await page.goto(`${base}/?member=${otherId}`);
+  await page.locator('#card-progress').waitFor();
+  assert.equal(await page.locator('#card-progress').textContent(), '6 / 8 stamps');
+  await page.goto(base);
+  await page.locator('.wallet-card').nth(1).waitFor();
+  assert.equal(await page.locator('.wallet-card').count(), 2);
+  await page.getByRole('link', { name: 'Test Shop', exact: true }).click();
+  await page.locator('#card-progress').waitFor();
+  assert.equal(await page.locator('#card-progress').textContent(), '2 / 8 stamps');
   await page.evaluate(() => {
     const event = new Event('beforeinstallprompt');
     event.prompt = async () => {};

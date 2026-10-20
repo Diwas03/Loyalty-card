@@ -99,7 +99,7 @@ test("hosted enrollment retries, distinct browsers, named staff authorization an
   await staff
     .post("/api/login")
     .send({ username: "barista", password: "temporary-staff-test" })
-    .expect(200);
+    .expect(200).then(response => { staff.set("Authorization", "Bearer " + response.body.token); });
   await staff.post("/api/staff/programme").send({ stampGoal: 10 }).expect(403);
   for (let i = 0; i < 2; i++)
     await staff
@@ -269,13 +269,13 @@ test("owner registers a chosen account, then creates staff who can log in but ca
     assert.equal((await db.query("SELECT full_name FROM coffee.staff_profiles WHERE username='my.owner'")).rows[0].full_name, "Shop Owner");
     await request(app).post("/api/staff/accounts").send({}).expect(401);
     const owner = request.agent(app);
-    await owner.post("/api/login").send({ username: "my.owner", password: ownerPassword }).expect(200);
+    await owner.post("/api/login").send({ username: "my.owner", password: ownerPassword }).expect(200).then(response => { owner.set("Authorization", "Bearer " + response.body.token); });
     await owner.get("/api/staff/me").expect(200);
     const staffData = { username: "barista", fullName: "Coffee Staff", password: "test-chosen-staff-password", role: "owner" };
     await owner.post("/api/staff/accounts").send(staffData).expect(201, { username: "barista", fullName: "Coffee Staff", role: "staff", shopId: "default" });
     await owner.post("/api/staff/accounts").send(staffData).expect(409);
     const staff = request.agent(app);
-    await staff.post("/api/login").send({ username: "barista", password: staffData.password }).expect(200);
+    await staff.post("/api/login").send({ username: "barista", password: staffData.password }).expect(200).then(response => { staff.set("Authorization", "Bearer " + response.body.token); });
     await staff.post("/api/staff/accounts").send({ ...staffData, username: "intruder" }).expect(403);
     await staff.post("/api/logout").send({}).expect(200);
     await staff.get("/api/staff/me").expect(401);
@@ -309,7 +309,7 @@ test("authenticated QR scanning awards one stamp, deduplicates frames and retrie
   await request(app).post(url).send({}).expect(401);
   await db.query("INSERT INTO coffee.staff_accounts VALUES($1,$2,$3,true)", ["scanner", passwordHash("scanner-test-password"), "staff"]);
   const staff = request.agent(app);
-  await staff.post("/api/login").send({ username: "scanner", password: "scanner-test-password" }).expect(200);
+  await staff.post("/api/login").send({ username: "scanner", password: "scanner-test-password" }).expect(200).then(response => { staff.set("Authorization", "Bearer " + response.body.token); });
   await staff.post(url).send({}).expect(400);
   await staff.post(url).set("Origin", "https://wrong.example").set("Idempotency-Key", randomUUID()).send({}).expect(403);
   const keys = [randomUUID(), randomUUID()];
@@ -342,13 +342,13 @@ test("shops isolate enrollment cookies, staff, scans, purchases, settings and Wa
   const shopB = (await request(app).post("/api/setup/owner").send(b).expect(201)).body.shopId;
   assert.notEqual(shopA, shopB);
   const ownerA = request.agent(app), ownerB = request.agent(app);
-  await ownerA.post("/api/login").send(a).expect(200);
-  await ownerB.post("/api/login").send(b).expect(200);
+  await ownerA.post("/api/login").send(a).expect(200).then(response => { ownerA.set("Authorization", "Bearer " + response.body.token); });
+  await ownerB.post("/api/login").send(b).expect(200).then(response => { ownerB.set("Authorization", "Bearer " + response.body.token); });
   const staffCreated = (await ownerA.post("/api/staff/accounts").send({ username: "alpha-staff", fullName: "Alpha Staff", password: "multi-shop-staff-password", shopId: shopB, role: "owner" }).expect(201)).body;
   assert.equal(staffCreated.shopId, shopA);
   assert.equal(staffCreated.role, "staff");
   const staffA = request.agent(app);
-  await staffA.post("/api/login").send({ username: "alpha-staff", password: "multi-shop-staff-password" }).expect(200);
+  await staffA.post("/api/login").send({ username: "alpha-staff", password: "multi-shop-staff-password" }).expect(200).then(response => { staffA.set("Authorization", "Bearer " + response.body.token); });
   const customer = request.agent(app);
   await customer.get(`/api/customer-session?shop=${shopA}`).expect(200);
   const memberA = (await customer.post("/api/join").send({ name: "Shared browser", accept: true, shopId: shopA }).expect(200)).body.member;
@@ -383,4 +383,33 @@ test("shops isolate enrollment cookies, staff, scans, purchases, settings and Wa
   assert.notEqual(walletA.id, walletB.id);
   assert.equal(walletA.barcode.value, memberA.id);
   assert.equal(walletB.barcode.value, memberB.id);
+});
+
+test("staff sessions never use cookies; shop design is owner-only, validated and visible on customer cards", async () => {
+  const app = createHostedApp(db);
+  const password = "design-owner-test-password";
+  await request(app).post("/api/setup/owner").send({ username: "designer", fullName: "Design Owner", shopName: "Design Shop", password }).expect(201);
+  const login = await request(app).post("/api/login").send({ username: "designer", password }).expect(200);
+  assert.match(login.body.token, /^[a-f0-9]{64}$/);
+  assert.equal(login.body.expiresIn, 1800);
+  assert.ok(!JSON.stringify(login.headers["set-cookie"] || []).includes(login.body.token));
+  await request(app).get("/api/staff/me").set("Cookie", "staff=" + login.body.token).expect(401);
+  const owner = request.agent(app).set("Authorization", "Bearer " + login.body.token);
+  await owner.post("/api/staff/enroll").send({ name: "Removed feature" }).expect(410);
+  const customer = request.agent(app);
+  await customer.get("/api/customer-session").expect(200);
+  const joined = (await customer.post("/api/join").send({ name: "Own signup", accept: true }).expect(200)).body.member;
+  const design = { name: "Design Shop", color: "#eedd99", cardTitle: "Regulars club", tagline: "Thanks for stopping by.", rewardLabel: "Free latte", stampIcon: "heart", cardStyle: "minimal", logoData: "" };
+  await owner.post("/api/staff/shop").send({ ...design, logoData: "data:image/svg+xml;base64,PHN2Zz4=" }).expect(400);
+  await owner.post("/api/staff/shop").send({ ...design, stampIcon: "invalid" }).expect(400);
+  await owner.post("/api/staff/shop").send(design).expect(200);
+  const card = (await request(app).get("/api/members/" + joined.id).expect(200)).body;
+  assert.equal(card.cardTitle, design.cardTitle);
+  assert.equal(card.rewardLabel, design.rewardLabel);
+  assert.equal(card.stampIcon, "heart");
+  assert.equal(card.cardStyle, "minimal");
+  assert.equal(card.shopColor, design.color);
+  assert.equal(card.stamps, 0);
+  await db.query("UPDATE coffee.sessions SET expires=$1 WHERE token_hash=$2", [Date.now() - 1, (await import("../src/hosted-db.js")).digest(login.body.token)]);
+  await owner.get("/api/staff/me").expect(401);
 });

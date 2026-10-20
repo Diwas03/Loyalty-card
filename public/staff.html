@@ -11,6 +11,7 @@
     <link rel="icon" type="image/svg+xml" href="/brand.svg" />
     <link rel="stylesheet" href="/style.css" />
     <script src="/vendor/zxing/zxing-browser.min.js" defer></script>
+    <script src="/card-ui.js" defer></script>
     <script src="/staff.js" defer></script>
   </head>
   <body class="staff-page">
@@ -46,23 +47,8 @@
           </form>
           <div id="customers" class="customer-list"></div>
         </section>
-        <section>
-          <h2>Welcome someone new</h2>
-          <form id="enroll">
-            <label for="name">Customer display name</label>
-            <div class="row">
-              <input
-                id="name"
-                maxlength="80"
-                required
-                placeholder="First name or nickname"
-              /><button>Create card</button>
-            </div>
-            <small
-              >No phone number or email needed. Each customer gets a private
-              card link.</small
-            >
-          </form>
+        <section class="customer-invite">
+          <h2>Let customers join</h2><p>Customers create their own card by scanning your shop’s QR code.</p><a id="customer-join-link" href="/join.html" class="button secondary" target="_blank" rel="noopener">Open signup page ↗</a>
         </section>
         <section id="scan-panel">
           <h2>Scan a card</h2>
@@ -114,9 +100,16 @@
         <section id="programme-section" hidden>
           <h2>Programme settings</h2>
           <form id="shop-branding" hidden>
+            <h3>Card designer</h3><p class="muted">Make it yours. Preview changes before publishing them to every customer’s card.</p>
             <label>Shop name <input id="shop-name" maxlength="80" required /></label>
-            <label>Card color <input id="shop-color" type="color" value="#41291d" required /></label>
-            <button>Save shop branding</button>
+            <label>Card title <input id="card-title" maxlength="80" required /></label>
+            <label>Card message <input id="card-tagline" maxlength="120" /></label>
+            <label>Reward name <input id="reward-label" maxlength="80" required placeholder="Free coffee" /></label>
+            <div class="design-row"><label>Card color <input id="shop-color" type="color" value="#193d32" required /></label><label>Stamp symbol <select id="stamp-icon"><option value="check">Checkmark ✓</option><option value="coffee">Coffee ☕</option><option value="star">Star ★</option><option value="heart">Heart ♥</option></select></label></div>
+            <label>Card design <select id="card-style"><option value="classic">Classic · soft circular pattern</option><option value="minimal">Minimal · solid color</option></select></label>
+            <label>Shop logo <input id="shop-logo" type="file" accept="image/png,image/jpeg,image/webp" /></label><small>PNG, JPEG or WebP. Images are resized for your card. Maximum original file size: 5 MB.</small><button type="button" id="remove-logo" class="secondary">Remove logo</button>
+            <p class="eyebrow preview-heading">LIVE PREVIEW · SAMPLE BALANCE</p><div id="card-preview" aria-label="Card design preview"></div>
+            <button id="save-design">Publish card design</button><p id="design-message" role="status" aria-live="polite"></p>
           </form>
           <form id="programme">
             <label for="goal">Stamps per free coffee (2–100)</label>

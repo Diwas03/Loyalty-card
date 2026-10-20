@@ -30,15 +30,16 @@ try {
   await page.locator("#password").fill(password);
   await page.locator("#login button").click();
   await page.waitForURL("**/staff.html");
-  await page.locator("#name").fill("Browser Test Customer");
-  await page.locator("#enroll button").click();
-  await page.waitForFunction(
-    () =>
-      document.querySelector("#customer-name")?.textContent ===
-      "Browser Test Customer",
-  );
-  const link = await page.locator("#customer-link").getAttribute("href");
-  assert.ok(link?.includes("member="));
+  const customer = await context.newPage();
+  await customer.goto(origin + "/join.html");
+  await customer.locator("#name").fill("Browser Test Customer");
+  await customer.locator("#accept").check();
+  await customer.locator("#submit").click();
+  await customer.waitForURL(url => url.searchParams.has("member"));
+  const link = new URL(customer.url()).pathname + new URL(customer.url()).search;
+  await page.locator("#member").fill(new URL(customer.url()).searchParams.get("member")!);
+  await page.locator("#lookup button").click();
+  await page.waitForFunction(() => document.querySelector("#customer-name")?.textContent === "Browser Test Customer");
   let loseOnce = true;
   await page.route("**/api/staff/members/*/purchase", async (route) => {
     if (loseOnce) {

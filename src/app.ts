@@ -1,3 +1,4 @@
+import { staffToken } from "./staff-session.js";
 import { join, joinedMember } from "./join.js";
 import express from "express";
 import helmet from "helmet";
@@ -10,7 +11,6 @@ import {
   type Member,
   member,
   transact,
-  enroll,
   setGoal,
 } from "./db.js";
 import { verifyPassword } from "./auth.js";
@@ -80,7 +80,7 @@ export function createApp(db: DB) {
   const staff: express.RequestHandler = async (req, res, next) => {
     try {
       const token =
-        typeof req.cookies.staff === "string" ? req.cookies.staff : "";
+        staffToken(req);
       const { rows } = await db.query(
         "SELECT * FROM sessions WHERE token = $1",
         [token],
@@ -263,15 +263,10 @@ export function createApp(db: DB) {
         const token = randomBytes(32).toString("hex");
         await db.query(
           "INSERT INTO sessions (token, expires, username) VALUES ($1, $2, $3)",
-          [token, Date.now() + 8 * 3600000, username],
+          [token, Date.now() + 30 * 60000, username],
         );
-        res.cookie("staff", token, {
-          httpOnly: true,
-          sameSite: "strict",
-          secure: !!publicBaseUrl(),
-          maxAge: 8 * 3600000,
-        });
-        res.json({ ok: true });
+        res.clearCookie("staff", { path: "/" });
+        res.json({ ok: true, token, expiresIn: 1800 });
       } catch (e) {
         next(e);
       }
@@ -281,7 +276,7 @@ export function createApp(db: DB) {
   app.post("/api/logout", staff, async (req, res, next) => {
     try {
       await db.query("DELETE FROM sessions WHERE token = $1", [
-        req.cookies.staff,
+        staffToken(req),
       ]);
       res.clearCookie("staff");
       res.json({ ok: true });
@@ -410,15 +405,9 @@ export function createApp(db: DB) {
     }
   });
 
-  app.post("/api/staff/enroll", staff, async (req, res, next) => {
-    try {
-      const m = await enroll(db, req.body.name);
-      res.status(201).json(publicMember(m));
-    } catch (e) {
-      res.status(400).json({ error: (e as Error).message });
-    }
+  app.post("/api/staff/enroll", staff, (_req, res) => {
+    res.status(410).json({ error: "Customers create their own cards using the shop QR code." });
   });
-
   app.post("/api/staff/jobs/:job/retry", staff, async (req, res, next) => {
     try {
       if (res.locals.role !== "owner") {
@@ -693,43 +682,6 @@ export function createApp(db: DB) {
   );
 
   app.post("/apple/v1/log", (_req, res) => res.sendStatus(200));
-
-  app.get("/staff.html", async (req, res, next) => {
-    try {
-      const token =
-        typeof req.cookies.staff === "string" ? req.cookies.staff : "";
-      const { rows } = await db.query(
-        "SELECT * FROM sessions WHERE token = $1",
-        [token],
-      );
-      const session = rows[0];
-      if (!session || Number(session.expires) < Date.now()) {
-        res.redirect("/login.html");
-        return;
-      }
-      if (session.username === "legacy") {
-        const { rows: accs } = await db.query(
-          "SELECT 1 FROM staff_accounts LIMIT 1",
-        );
-        if (accs.length) {
-          res.redirect("/login.html");
-          return;
-        }
-      } else {
-        const { rows: accs } = await db.query(
-          "SELECT 1 FROM staff_accounts WHERE username = $1 AND enabled = 1",
-          [String(session.username)],
-        );
-        if (!accs.length) {
-          res.redirect("/login.html");
-          return;
-        }
-      }
-      next();
-    } catch (e) {
-      next(e);
-    }
-  });
 
   app.get("/logo.png", (_req, res) => {
     res
