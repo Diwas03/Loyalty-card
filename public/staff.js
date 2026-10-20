@@ -265,12 +265,31 @@ $("#scan").onclick = async () => {
   }
 };
 $("#stop").onclick = () => controls?.stop();
+$("#staff-account").onsubmit = async (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const button = form.querySelector("button");
+  button.disabled = true;
+  try {
+    const account = await api("/api/staff/accounts", {
+      method: "POST",
+      body: JSON.stringify(Object.fromEntries(new FormData(form))),
+    });
+    form.reset();
+    $("#account-message").textContent = `Account created for ${account.fullName}. They can now sign in as ${account.username}.`;
+  } catch (error) {
+    $("#account-message").textContent = error.message;
+  } finally {
+    button.disabled = false;
+  }
+};
 window.addEventListener("pagehide", () => controls?.stop());
 (async () => {
   try {
     const me = await api("/api/staff/me");
     role = me.role;
     if (role === "owner") {
+      if (me.accountsEnabled) $("#accounts-section").hidden = false;
       $("#programme-section").hidden = false;
       const p = await api("/api/staff/programme");
       $("#goal").value = p.stampGoal;

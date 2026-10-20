@@ -2,6 +2,34 @@
 
 Production URL: **https://loyalty-card-pi.vercel.app**.
 
+## Create staff accounts in the website
+
+Open `/register.html` to create the first owner account with your name, chosen
+username and a new password of 12–200 characters. The shop setup password is the
+original shop password whose salted hash is saved as `STAFF_PASSWORD_HASH` in
+Vercel. It authorizes first-owner creation only; it does not choose the new
+account's username or password. No predefined account is created automatically.
+Passwords are hashed with scrypt before they are stored in the database.
+
+Sign in at `/login.html`. Owners see **Create a staff account** in their dashboard
+and can create individual staff usernames and passwords. Staff can sign in and
+manage loyalty cards but cannot create accounts or change owner-only settings.
+Public registration closes atomically after the first account exists, including
+simultaneous setup requests. Existing staff accounts and passwords are preserved.
+If an owner already exists, use that account or the private `hosted:staff` helper;
+registration cannot be used to take over or reset an existing shop.
+
+The Vercel function initializes the private schema in a locked transaction before
+accepting API requests. The schema SQL is explicitly included in the function
+bundle. Failed initialization can retry on a later request; it does not permanently
+cache a failed connection. This still requires a valid database URI, verified TLS,
+network access and a backend database role allowed to install the schema.
+
+Google Wallet buttons require a readable, valid RSA service-account credential;
+a Windows file path or blank placeholder is insufficient on Vercel. Missing or
+malformed credentials keep wallet saving disabled while browser membership cards
+remain available. Provider approval and real-device saving need separate checks.
+
 Connecting Supabase to Vercel supplies connection variables. It does not create the private loyalty tables, a staff owner, Google signing credentials or the minute retry schedule. The newest server commit also introduced `public` Postgres tables; the Vercel function still uses the private `coffee` schema. These must not be treated as interchangeable or independently updated copies of the official balance.
 
 ## Configuration now handled automatically by code

@@ -1,11 +1,12 @@
 import { test, before, beforeEach, after } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { randomUUID } from "node:crypto";
+import { randomUUID, generateKeyPairSync } from "node:crypto";
 import request from "supertest";
 import { hostedPool, deliverHosted, readMember } from "../src/hosted-db.js";
 import { createHostedApp } from "../src/hosted-app.js";
 import { passwordHash } from "../src/auth.js";
+import { initializeHosted } from "../src/hosted-runtime.js";
 const url = new URL(process.env.TEST_DATABASE_URL || "");
 if (
   !["localhost", "127.0.0.1"].includes(url.hostname) ||
@@ -122,7 +123,10 @@ test("hosted wallet failure preserves committed purchase; retry succeeds and cla
     "staff",
   ]);
   process.env.GOOGLE_ISSUER_ID = "test";
-  process.env.GOOGLE_SERVICE_ACCOUNT_JSON = "test";
+  process.env.GOOGLE_SERVICE_ACCOUNT_JSON = JSON.stringify({
+    client_email: "test@example.com",
+    private_key: generateKeyPairSync("rsa", { modulusLength: 2048, privateKeyEncoding: { type: "pkcs8", format: "pem" }, publicKeyEncoding: { type: "spki", format: "pem" } }).privateKey,
+  });
   process.env.PUBLIC_BASE_URL = "https://coffee.example";
   await deliverHosted(db, m.id, async () => {
     throw Error("Google Wallet PATCH HTTP 500");
@@ -235,4 +239,63 @@ test("hosted configuration is repeatable and legacy public import preserves iden
   );
   await assert.rejects(importLegacyPublic(db), /Refusing to overwrite/);
   assert.equal((await hostedStatus(db)).legacyPublicTables, true);
+});
+
+test("cold-start initialization creates a missing schema and preserves existing members", async () => {
+  await db.query("DROP SCHEMA coffee CASCADE");
+  await Promise.all([initializeHosted(db), initializeHosted(db)]);
+  assert.equal(Number((await db.query("SELECT count(*) FROM coffee.staff_accounts")).rows[0].count), 0);
+  const m = await enroll();
+  await initializeHosted(db);
+  assert.equal((await readMember(db, m.id)).id, m.id);
+});
+
+test("owner registers a chosen account, then creates staff who can log in but cannot create accounts", async () => {
+  delete process.env.PUBLIC_BASE_URL;
+  const previous = process.env.STAFF_PASSWORD_HASH;
+  const setupPassword = "test-shop-setup-password";
+  const ownerPassword = "test-chosen-owner-password";
+  process.env.STAFF_PASSWORD_HASH = passwordHash(setupPassword);
+  try {
+    const app = createHostedApp(db);
+    const data = { username: "My.Owner", fullName: "Shop Owner", password: ownerPassword, setupPassword };
+    await request(app).post("/api/setup/owner").send({ ...data, setupPassword: "wrong" }).expect(403);
+    await request(app).post("/api/setup/owner").set("Origin", "https://wrong.example").send(data).expect(403);
+    await request(app).post("/api/setup/owner").send(data).expect(201, { username: "my.owner", fullName: "Shop Owner", role: "owner" });
+    await request(app).post("/api/setup/owner").send({ ...data, username: "another-owner" }).expect(409);
+    const stored = (await db.query("SELECT * FROM coffee.staff_accounts WHERE username='my.owner'")).rows[0];
+    assert.ok(stored.password_hash !== ownerPassword);
+    assert.equal((await db.query("SELECT full_name FROM coffee.staff_profiles WHERE username='my.owner'")).rows[0].full_name, "Shop Owner");
+    await request(app).post("/api/staff/accounts").send({}).expect(401);
+    const owner = request.agent(app);
+    await owner.post("/api/login").send({ username: "my.owner", password: ownerPassword }).expect(200);
+    await owner.get("/api/staff/me").expect(200);
+    const staffData = { username: "barista", fullName: "Coffee Staff", password: "test-chosen-staff-password", role: "owner" };
+    await owner.post("/api/staff/accounts").send(staffData).expect(201, { username: "barista", fullName: "Coffee Staff", role: "staff" });
+    await owner.post("/api/staff/accounts").send(staffData).expect(409);
+    const staff = request.agent(app);
+    await staff.post("/api/login").send({ username: "barista", password: staffData.password }).expect(200);
+    await staff.post("/api/staff/accounts").send({ ...staffData, username: "intruder" }).expect(403);
+    await staff.post("/api/logout").send({}).expect(200);
+    await staff.get("/api/staff/me").expect(401);
+  } finally {
+    if (previous === undefined) delete process.env.STAFF_PASSWORD_HASH;
+    else process.env.STAFF_PASSWORD_HASH = previous;
+  }
+});
+
+test("simultaneous first-owner registration permits exactly one account", async () => {
+  delete process.env.PUBLIC_BASE_URL;
+  const previous = process.env.STAFF_PASSWORD_HASH;
+  process.env.STAFF_PASSWORD_HASH = passwordHash("concurrent-setup-password");
+  try {
+    const app = createHostedApp(db);
+    const create = (username: string) => request(app).post("/api/setup/owner").send({ username, fullName: username, password: "test-chosen-password", setupPassword: "concurrent-setup-password" });
+    const results = await Promise.all([create("owner-one"), create("owner-two")]);
+    assert.deepEqual(results.map(r => r.status).sort(), [201, 409]);
+    assert.equal(Number((await db.query("SELECT count(*) FROM coffee.staff_accounts")).rows[0].count), 1);
+  } finally {
+    if (previous === undefined) delete process.env.STAFF_PASSWORD_HASH;
+    else process.env.STAFF_PASSWORD_HASH = previous;
+  }
 });

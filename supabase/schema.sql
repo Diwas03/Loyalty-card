@@ -8,6 +8,16 @@ CREATE TABLE IF NOT EXISTS coffee.programme(id int PRIMARY KEY CHECK(id=1),stamp
 INSERT INTO coffee.programme VALUES(1,8) ON CONFLICT DO NOTHING;
 CREATE TABLE IF NOT EXISTS coffee.members(id text PRIMARY KEY DEFAULT gen_random_uuid()::text,name text NOT NULL CHECK(length(name) BETWEEN 1 AND 80),stamps int NOT NULL DEFAULT 0 CHECK(stamps>=0),rewards int NOT NULL DEFAULT 0 CHECK(rewards>=0),version bigint NOT NULL DEFAULT nextval('coffee.revision'),apple_token text NOT NULL DEFAULT encode(gen_random_bytes(32),'hex'));
 CREATE TABLE IF NOT EXISTS coffee.staff_accounts(username text PRIMARY KEY,password_hash text NOT NULL,role text NOT NULL CHECK(role IN ('staff','owner')),enabled boolean NOT NULL DEFAULT true);
+CREATE TABLE IF NOT EXISTS coffee.staff_profiles(username text PRIMARY KEY REFERENCES coffee.staff_accounts(username) ON DELETE CASCADE,full_name text NOT NULL CHECK(length(full_name) BETWEEN 1 AND 80));
+CREATE OR REPLACE FUNCTION coffee.register_staff(p_username text,p_hash text,p_name text,p_first boolean) RETURNS jsonb LANGUAGE plpgsql AS $$
+BEGIN
+ PERFORM pg_advisory_xact_lock(7342101);
+ IF p_first AND EXISTS(SELECT 1 FROM coffee.staff_accounts) THEN RAISE EXCEPTION 'Owner setup is already complete' USING ERRCODE='23505';END IF;
+ IF p_username !~ '^[a-z0-9._-]{3,40}$' OR p_username='legacy' OR p_hash !~ '^[^:]+:[a-f0-9]{64}$' OR length(trim(p_name)) NOT BETWEEN 1 AND 80 THEN RAISE EXCEPTION 'Invalid account details';END IF;
+ INSERT INTO coffee.staff_accounts(username,password_hash,role,enabled) VALUES(p_username,p_hash,CASE WHEN p_first THEN 'owner' ELSE 'staff' END,true);
+ INSERT INTO coffee.staff_profiles VALUES(p_username,trim(p_name));
+ RETURN jsonb_build_object('username',p_username,'fullName',trim(p_name),'role',CASE WHEN p_first THEN 'owner' ELSE 'staff' END);
+END $$;
 CREATE TABLE IF NOT EXISTS coffee.sessions(token_hash text PRIMARY KEY,username text NOT NULL,expires bigint NOT NULL);
 CREATE TABLE IF NOT EXISTS coffee.operations(key text PRIMARY KEY,member_id text NOT NULL REFERENCES coffee.members(id),kind text NOT NULL,result jsonb NOT NULL,actor text NOT NULL,created_at bigint NOT NULL);
 CREATE TABLE IF NOT EXISTS coffee.jobs(id bigserial PRIMARY KEY,member_id text NOT NULL REFERENCES coffee.members(id),provider text NOT NULL DEFAULT 'google',version bigint NOT NULL,status text NOT NULL DEFAULT 'pending',attempts int NOT NULL DEFAULT 0,next_at bigint NOT NULL DEFAULT 0,error text,UNIQUE(member_id,provider,version));

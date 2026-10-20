@@ -1,4 +1,6 @@
 import "dotenv/config";
+import { readFileSync } from "node:fs";
+import { createPrivateKey } from "node:crypto";
 export const googleKeys = [
   "GOOGLE_ISSUER_ID",
   "GOOGLE_SERVICE_ACCOUNT_FILE",
@@ -49,6 +51,16 @@ export function readiness() {
         !process.env.GOOGLE_SERVICE_ACCOUNT_JSON,
     ),
   );
+  if (!googleMissing.includes("GOOGLE_SERVICE_ACCOUNT_FILE")) {
+    try {
+      const account = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON || readFileSync(process.env.GOOGLE_SERVICE_ACCOUNT_FILE!, "utf8"));
+      if (typeof account.client_email !== "string" || !account.client_email.includes("@") ||
+          typeof account.private_key !== "string" || createPrivateKey(account.private_key).asymmetricKeyType !== "rsa")
+        throw Error("Invalid service account");
+    } catch {
+      googleMissing.push(process.env.GOOGLE_SERVICE_ACCOUNT_JSON ? "GOOGLE_SERVICE_ACCOUNT_JSON" : "GOOGLE_SERVICE_ACCOUNT_FILE");
+    }
+  }
   return {
     google: { enabled: !googleMissing.length, missing: googleMissing },
     apple: {

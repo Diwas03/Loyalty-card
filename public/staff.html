@@ -121,6 +121,17 @@
             >
           </form>
         </section>
+        <section id="accounts-section" hidden>
+          <h2>Create a staff account</h2>
+          <p>Each staff member signs in with their own username and password.</p>
+          <form id="staff-account">
+            <label>Staff member’s name <input name="fullName" maxlength="80" required /></label>
+            <label>Username <input name="username" autocomplete="off" pattern="[A-Za-z0-9._-]{3,40}" minlength="3" maxlength="40" required /></label>
+            <label>Password <input name="password" type="password" autocomplete="new-password" minlength="12" maxlength="200" required /></label>
+            <button>Create staff account</button>
+          </form>
+          <p id="account-message" role="status" aria-live="polite"></p>
+        </section>
       </div>
     </div>
   </body>

@@ -1,3 +1,8 @@
+const parameters = new URLSearchParams(location.search);
+if (parameters.get("created") === "1") {
+  document.querySelector("#username").value = parameters.get("username") || "";
+  document.querySelector("#message").textContent = "Account created. Sign in with your new username and password.";
+}
 document.querySelector("#login").onsubmit = async (e) => {
   e.preventDefault();
   try {

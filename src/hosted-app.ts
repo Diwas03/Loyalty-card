@@ -3,7 +3,7 @@ import helmet from "helmet";
 import cookieParser from "cookie-parser";
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import QRCode from "qrcode";
-import { verifyPassword } from "./auth.js";
+import { verifyPassword, passwordHash } from "./auth.js";
 import { readiness, baseUrl, publicBaseUrl } from "./config.js";
 import { saveGoogle } from "./google.js";
 import { validJoinToken } from "./customer-token.js";
@@ -48,7 +48,8 @@ export function createHostedApp(
       (!req.is("application/json") ||
         !req.body ||
         Array.isArray(req.body) ||
-        (req.get("origin") && req.get("origin") !== baseUrl()))
+        (req.get("origin") && req.get("origin") !==
+          (publicBaseUrl() || (!process.env.VERCEL ? `http://${req.get("host")}` : undefined))))
     ) {
       res.status(403).json({ error: "Same-origin JSON required" });
       return;
@@ -102,6 +103,52 @@ export function createHostedApp(
       ])
     ).rows[0].ok;
   }
+  async function register(req: express.Request, res: express.Response, first: boolean) {
+    const username = typeof req.body.username === "string" ? req.body.username.trim().toLowerCase() : "";
+    const fullName = typeof req.body.fullName === "string" ? req.body.fullName.trim() : "";
+    if (username === "legacy" || !/^[a-z0-9._-]{3,40}$/.test(username) || !fullName || fullName.length > 80 ||
+        typeof req.body.password !== "string" || req.body.password.length < 12 || req.body.password.length > 200) {
+      res.status(400).json({ error: "Enter a name, a 3–40 character username, and a password of 12–200 characters." });
+      return;
+    }
+    try {
+      const result = await db.query("SELECT coffee.register_staff($1,$2,$3,$4) AS account", [username, passwordHash(req.body.password), fullName, first]);
+      res.status(201).json(result.rows[0].account);
+    } catch (error) {
+      if ((error as { code?: string }).code === "23505") {
+        res.status(409).json({ error: first ? "An account already exists. Sign in or contact the shop owner." : "That username is already in use." });
+        return;
+      }
+      throw error;
+    }
+  }
+  app.post("/api/setup/owner", async (req, res) => {
+    if (!(await allowed(req, "owner-setup", 5, 60000))) {
+      res.status(429).json({ error: "Too many attempts. Try again in one minute." });
+      return;
+    }
+    const hash = process.env.STAFF_PASSWORD_HASH;
+    if (!hash || !/^[^:]+:[a-f0-9]{64}$/i.test(hash)) {
+      res.status(503).json({ error: "Shop setup is not configured. Contact the shop administrator." });
+      return;
+    }
+    if (!verifyPassword(req.body.setupPassword, hash)) {
+      res.status(403).json({ error: "The shop setup password is incorrect." });
+      return;
+    }
+    await register(req, res, true);
+  });
+  app.post("/api/staff/accounts", staff, async (req, res) => {
+    if (res.locals.role !== "owner") {
+      res.status(403).json({ error: "Owner access required" });
+      return;
+    }
+    if (!(await allowed(req, "create-staff", 20, 60000))) {
+      res.status(429).json({ error: "Too many accounts created. Try again in one minute." });
+      return;
+    }
+    await register(req, res, false);
+  });
   app.post("/api/login", async (req, res) => {
     if (!(await allowed(req, "login", 5, 60000))) {
       res
@@ -127,10 +174,10 @@ export function createHostedApp(
       (!named && username === "legacy"
         ? process.env.STAFF_PASSWORD_HASH
         : undefined);
-    if (!named && !hash) {
+    if (!named && (!hash || !/^[^:]+:[a-f0-9]{64}$/i.test(hash))) {
       res.status(503).json({
         error:
-          "Hosted staff not configured: create an owner with npm run hosted:staff -- owner owner",
+          "Staff sign-in has not been set up. Contact the shop owner.",
       });
       return;
     }
@@ -157,7 +204,7 @@ export function createHostedApp(
     res.json({ ok: true });
   });
   app.get("/api/staff/me", staff, (_req, res) =>
-    res.json({ username: res.locals.actor, role: res.locals.role }),
+    res.json({ username: res.locals.actor, role: res.locals.role, accountsEnabled: true }),
   );
   app.post("/api/logout", staff, async (req, res) => {
     await db.query("DELETE FROM coffee.sessions WHERE token_hash=$1", [
@@ -222,7 +269,7 @@ export function createHostedApp(
     const m = row ? await readMember(db, row.member_id) : null;
     res.json({ member: m ? publicMember(m) : null });
   });
-  app.post("/api/join", async (req, res) => {
+  app.post("/api/join", async (req, res, next) => {
     if (!(await allowed(req, "join", 30, 900000))) {
       res.status(429).json({ error: "Too many enrollments. Try again later." });
       return;
@@ -235,6 +282,10 @@ export function createHostedApp(
         error:
           "Confirm membership and allow cookies; refresh this page to start",
       });
+      return;
+    }
+    if (typeof req.body.name !== "string" || !req.body.name.trim() || req.body.name.trim().length > 80) {
+      res.status(400).json({ error: "Use a nickname of 1–80 characters" });
       return;
     }
     try {
@@ -256,8 +307,8 @@ export function createHostedApp(
           ? "/wallet/google/" + encodeURIComponent(m.id)
           : null,
       });
-    } catch {
-      res.status(400).json({ error: "Use a nickname of 1–80 characters" });
+    } catch (error) {
+      next(error);
     }
   });
   app.get("/api/members/:id", async (req, res) => {
