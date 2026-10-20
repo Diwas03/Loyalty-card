@@ -239,3 +239,6 @@ pre { white-space: pre-wrap; overflow-wrap: anywhere; }
 @media (max-width: 380px) { .stamp-grid { gap: 7px; } }
 .stamp-grid { gap: clamp(4px, 1vw, 10px); }
 .card .card-label, #card-rewards, .card small { opacity: 1; }
+nav a:first-child { min-width: 0; overflow-wrap: anywhere; }
+.card-label span:first-child { min-width: 0; overflow-wrap: anywhere; text-align: left; }
+.card-label span:last-child { flex: 0 0 auto; margin-left: 15px; }
