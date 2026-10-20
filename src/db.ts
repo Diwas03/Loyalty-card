@@ -17,6 +17,9 @@ export type Member = {
   version: number;
   apple_token: string;
   stamp_goal?: number;
+  shop_id?: string;
+  shop_name?: string;
+  shop_color?: string;
 };
 
 /** Run the schema migrations and seed data on first start. */

@@ -10,8 +10,9 @@
   <body class="login-page">
     <h1>Create your shop owner account</h1>
     <section>
-      <p>Set up the shop’s first account. If your shop already has an owner, ask them to create your staff account.</p>
+      <p>Create an account for your shop. If your shop already has an owner, ask them to create your staff account.</p>
       <form id="register">
+        <label>Shop name <input name="shopName" maxlength="80" required /></label>
         <label>Your name <input name="fullName" autocomplete="name" maxlength="80" required /></label>
         <label>Choose a username <input name="username" autocomplete="username" pattern="[A-Za-z0-9._-]{3,40}" minlength="3" maxlength="40" required /></label>
         <label>Choose a password <input name="password" type="password" autocomplete="new-password" minlength="12" maxlength="200" required /></label>

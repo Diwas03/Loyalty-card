@@ -11,7 +11,7 @@
   <body>
     <nav>
       <a href="/">☕ Demo Coffee Shop</a
-      ><a href="/shop.html" target="_blank" rel="noopener">Print shop QR</a
+      ><a id="shop-qr-link" href="/shop.html" target="_blank" rel="noopener">Print shop QR</a
       ><span id="identity"></span
       ><button id="logout" class="secondary">Sign out</button>
     </nav>
@@ -57,7 +57,8 @@
         </section>
         <section>
           <h2>Scan a card</h2>
-          <button id="scan">Start camera</button
+          <p id="scan-help">Scan a customer card to look up their membership.</p>
+          <button id="scan" disabled>Start camera</button
           ><button id="stop" class="secondary">Stop camera</button
           ><video id="video" muted playsinline></video>
           <form id="lookup">
@@ -104,6 +105,11 @@
         </section>
         <section id="programme-section" hidden>
           <h2>Programme settings</h2>
+          <form id="shop-branding" hidden>
+            <label>Shop name <input id="shop-name" maxlength="80" required /></label>
+            <label>Card color <input id="shop-color" type="color" value="#41291d" required /></label>
+            <button>Save shop branding</button>
+          </form>
           <form id="programme">
             <label for="goal">Stamps per free coffee (2–100)</label>
             <div class="row">

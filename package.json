@@ -23,7 +23,8 @@
     "hosted:configure": "tsx scripts/configure-hosted.ts",
     "local": "node scripts/local.mjs",
     "local:staff": "node scripts/local.mjs staff",
-    "local:stop": "node scripts/local.mjs stop"
+    "local:stop": "node scripts/local.mjs stop",
+    "test:scanner": "node scripts/run-tests.mjs scanner"
   },
   "dependencies": {
     "@vercel/functions": "^3.10.1",

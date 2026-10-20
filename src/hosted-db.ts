@@ -13,14 +13,14 @@ export type HostedDB = Pick<pg.Pool, "query">;
 export async function readMember(db: HostedDB, id: string) {
   return (
     await db.query(
-      "SELECT m.*,p.stamp_goal FROM coffee.members m CROSS JOIN coffee.programme p WHERE m.id=$1",
+      "SELECT m.*,p.stamp_goal,p.name AS shop_name,p.color AS shop_color FROM coffee.members m JOIN coffee.shops p ON p.id=m.shop_id WHERE m.id=$1",
       [id],
     )
   ).rows[0];
 }
-export async function goal(db: HostedDB) {
+export async function goal(db: HostedDB, shopId = "default") {
   return Number(
-    (await db.query("SELECT stamp_goal FROM coffee.programme WHERE id=1"))
+    (await db.query("SELECT stamp_goal FROM coffee.shops WHERE id=$1", [shopId]))
       .rows[0].stamp_goal,
   );
 }
@@ -31,6 +31,9 @@ export const publicMember = (m: any) => ({
   rewards: m.rewards,
   version: m.version,
   stampGoal: m.stamp_goal || 8,
+  shopId: m.shop_id || "default",
+  shopName: m.shop_name || "Demo Coffee Shop",
+  shopColor: m.shop_color || "#41291d",
 });
 export async function deliverHosted(
   db: HostedDB,

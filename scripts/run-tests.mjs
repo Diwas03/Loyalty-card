@@ -5,6 +5,8 @@ const command = process.argv[2] || "unit";
 const flags =
   command === "browser"
     ? ["tests/browser-smoke.ts"]
+    : command === "scanner"
+      ? ["tests/scan-browser.ts"]
     : command === "hosted"
       ? ["--test", "tests/hosted.integration.ts"]
       : ["--test", "tests/*.test.ts"];

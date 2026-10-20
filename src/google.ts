@@ -51,10 +51,14 @@ async function access() {
   };
   return result.access_token;
 }
+export function googleClassId(m: Member) {
+  const suffix = !m.shop_id || m.shop_id === "default" ? "demo_coffee" : "shop_" + m.shop_id.replace(/-/g, "");
+  return `${process.env.GOOGLE_ISSUER_ID}.${suffix}`;
+}
 export function object(m: Member) {
   return {
     id: `${process.env.GOOGLE_ISSUER_ID}.${m.id}`,
-    classId: `${process.env.GOOGLE_ISSUER_ID}.demo_coffee`,
+    classId: googleClassId(m),
     state: "ACTIVE",
     accountId: m.id,
     accountName: m.name,
@@ -89,9 +93,10 @@ async function call(path: string, method: string, body?: unknown) {
 }
 export async function ensureGoogle(m: Member) {
   const cls = {
-    id: `${process.env.GOOGLE_ISSUER_ID}.demo_coffee`,
-    issuerName: "Demo Coffee Shop",
-    programName: "Demo Coffee Shop Rewards",
+    id: googleClassId(m),
+    issuerName: m.shop_name || "Demo Coffee Shop",
+    programName: `${m.shop_name || "Demo Coffee Shop"} Rewards`,
+    ...(m.shop_color ? { hexBackgroundColor: m.shop_color } : {}),
     programLogo: {
       sourceUri: { uri: baseUrl() + "/logo.png" },
       contentDescription: {
@@ -104,6 +109,8 @@ export async function ensureGoogle(m: Member) {
     await call("/loyaltyClass", "POST", cls);
   } catch (e) {
     if (!String(e).includes("409")) throw e;
+    const { id, reviewStatus, ...branding } = cls;
+    await call(`/loyaltyClass/${id}`, "PATCH", branding);
   }
   try {
     await call("/loyaltyObject", "POST", object(m));

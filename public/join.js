@@ -1,22 +1,27 @@
 (async () => {
   const $ = (s) => document.querySelector(s);
+  const shopId = new URLSearchParams(location.search).get("shop") || "default";
+  const shopQuery = "?shop=" + encodeURIComponent(shopId);
   let ready = false;
   const button = $("#submit");
   button.disabled = true;
   try {
     const [shopResponse, sessionResponse] = await Promise.all([
-      fetch("/api/shop"),
-      fetch("/api/customer-session"),
+      fetch("/api/shop" + shopQuery),
+      fetch("/api/customer-session" + shopQuery),
     ]);
     if (!shopResponse.ok || !sessionResponse.ok)
       throw Error("Could not connect. Please reload and try again.");
     const shop = await shopResponse.json(),
       session = await sessionResponse.json();
+    document.title = "Join " + shop.name;
+    $("nav a").textContent = "☕ " + shop.name;
+    $("nav a").href = "/join.html" + shopQuery;
+    $("#consent-shop").textContent = shop.name;
+    document.documentElement.style.setProperty("--shop-color", shop.color || "#41291d");
     $("#terms").textContent =
       `One paid coffee earns one stamp. ${shop.stampGoal} stamps earn a free coffee.`;
-    button.textContent = shop.googleEnabled
-      ? "Create card & open Google Wallet"
-      : "Create my browser card";
+    button.textContent = "Create my card";
     if (session.member) {
       $("#heading").textContent = "Welcome back, " + session.member.name + ".";
       $("#intro").textContent =
@@ -25,9 +30,7 @@
       $("#name").hidden = true;
       $("#name-label").hidden = true;
       $("#accept").checked = true;
-      button.textContent = shop.googleEnabled
-        ? "Continue to Google Wallet"
-        : "Open my card";
+      button.textContent = "Open my card";
       $("#existing").hidden = false;
       $("#existing").href = "/?member=" + encodeURIComponent(session.member.id);
     }
@@ -47,13 +50,14 @@
         body: JSON.stringify({
           name: $("#name").value,
           accept: $("#accept").checked,
+          shopId,
         }),
       });
       const data = await r.json();
       if (!r.ok) throw Error(data.error || "Could not create your membership");
       $("#existing").hidden = false;
       $("#existing").href = data.customerUrl;
-      location.assign(data.walletUrl || data.customerUrl);
+      location.assign(data.customerUrl);
     } catch (e) {
       $("#message").textContent =
         e.message +

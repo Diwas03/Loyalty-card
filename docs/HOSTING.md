@@ -19,7 +19,7 @@ No Vercel/Supabase project was created and no subscription purchased by the agen
 ## 1. Create Supabase and install the schema
 
 1. Sign up at https://supabase.com and create a project in your preferred region. Choose your intended plan after reviewing costs. Save its database password securely; do not send it in chat.
-2. In **SQL Editor**, run the contents of [`supabase/schema.sql`](../supabase/schema.sql). It installs pgcrypto if necessary, creates the private tables/functions and restricts public access. This script is repeatable for this version; do not drop the schema of a live shop to reset it.
+2. Use `npm run hosted:schema` with a securely configured database connection. For manual SQL Editor setup, run [`supabase/schema.sql`](../supabase/schema.sql) followed immediately by [`supabase/shops.sql`](../supabase/shops.sql) in the same transaction. Together they install the private tables, shop scoping and functions and restrict public access. These scripts are repeatable; do not drop a live schema to reset it.
 3. Click **Connect** and choose the **transaction pooler** connection string, normally port **6543**. Use its full username (`postgres.PROJECT_REF`) and percent-encode any password characters requiring URL encoding.
 4. Set that value as `DATABASE_URL` in a local ignored `.env` for administration and in Vercel's server-only Production environment later. Never use a `NEXT_PUBLIC_`/`VITE_` prefix. No Supabase browser SDK or public API key is required.
 5. TLS certificate verification is enabled for non-loopback databases. If the project requires a particular root certificate, download the official CA from Supabase and put its PEM contents in `DATABASE_CA_CERT`. Never disable verification or set `NODE_TLS_REJECT_UNAUTHORIZED=0`.

@@ -1,9 +1,9 @@
 import "dotenv/config";
-import { readFileSync } from "node:fs";
 import { hostedPool } from "../src/hosted-db.js";
+import { initializeHosted } from "../src/hosted-runtime.js";
 const db = hostedPool();
 try {
-  await db.query(readFileSync("supabase/schema.sql", "utf8"));
+  await initializeHosted(db);
   console.log("Hosted private schema installed.");
 } finally {
   await db.end();

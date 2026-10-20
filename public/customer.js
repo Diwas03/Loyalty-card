@@ -12,6 +12,14 @@
       );
       const m = await r.json();
       if (!r.ok) throw Error(m.error);
+      if (m.shopName) {
+        document.title = m.shopName + " loyalty card";
+        $("nav a").textContent = "☕ " + m.shopName;
+        $("nav a").href = "/join.html?shop=" + encodeURIComponent(m.shopId);
+        for (const link of document.querySelectorAll('a[href="/join.html"]'))
+          link.href = "/join.html?shop=" + encodeURIComponent(m.shopId);
+        document.documentElement.style.setProperty("--shop-color", m.shopColor);
+      }
       if (!id) {
         id = m.id;
         history.replaceState(null, "", "/?member=" + encodeURIComponent(id));

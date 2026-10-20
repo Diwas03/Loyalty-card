@@ -68,7 +68,7 @@ export function createHostedApp(
         typeof req.cookies.staff === "string" ? req.cookies.staff : "";
       const row = (
         await db.query(
-          "SELECT s.username,a.role,a.enabled FROM coffee.sessions s LEFT JOIN coffee.staff_accounts a USING(username) WHERE token_hash=$1 AND expires>$2",
+          "SELECT s.username,a.role,a.enabled,coalesce(p.shop_id,'default') AS shop_id FROM coffee.sessions s LEFT JOIN coffee.staff_accounts a USING(username) LEFT JOIN coffee.staff_profiles p ON p.username=s.username WHERE token_hash=$1 AND expires>$2",
           [digest(token), Date.now()],
         )
       ).rows[0];
@@ -83,6 +83,7 @@ export function createHostedApp(
         return;
       }
       res.locals.actor = row.username;
+      res.locals.shopId = row.shop_id;
       res.locals.role = row.username === "legacy" ? "owner" : row.role;
       next();
     } catch (e) {
@@ -112,11 +113,18 @@ export function createHostedApp(
       return;
     }
     try {
-      const result = await db.query("SELECT coffee.register_staff($1,$2,$3,$4) AS account", [username, passwordHash(req.body.password), fullName, first]);
+      const shopName = typeof req.body.shopName === "string" ? req.body.shopName.trim() : "My Coffee Shop";
+      if (first && (!shopName || shopName.length > 80)) {
+        res.status(400).json({ error: "Enter a shop name of 1–80 characters." });
+        return;
+      }
+      const result = first
+        ? await db.query("SELECT coffee.register_shop($1,$2,$3,$4) AS account", [username, passwordHash(req.body.password), fullName, shopName])
+        : await db.query("SELECT coffee.register_shop_staff($1,$2,$3,$4) AS account", [username, passwordHash(req.body.password), fullName, res.locals.shopId]);
       res.status(201).json(result.rows[0].account);
     } catch (error) {
       if ((error as { code?: string }).code === "23505") {
-        res.status(409).json({ error: first ? "An account already exists. Sign in or contact the shop owner." : "That username is already in use." });
+        res.status(409).json({ error: "That username is already in use. Choose another or sign in." });
         return;
       }
       throw error;
@@ -195,7 +203,7 @@ export function createHostedApp(
     res.json({ ok: true });
   });
   app.get("/api/staff/me", staff, (_req, res) =>
-    res.json({ username: res.locals.actor, role: res.locals.role, accountsEnabled: true }),
+    res.json({ username: res.locals.actor, role: res.locals.role, accountsEnabled: true, scanStamping: true, shopId: res.locals.shopId }),
   );
   app.post("/api/logout", staff, async (req, res) => {
     await db.query("DELETE FROM coffee.sessions WHERE token_hash=$1", [
@@ -222,22 +230,32 @@ export function createHostedApp(
       .status(404)
       .json({ error: "Open /join.html or your private membership link" }),
   );
-  app.get("/api/shop", async (_req, res) =>
-    res.json({
-      name: "Demo Coffee Shop",
-      stampGoal: await goal(db),
-      joinUrl: baseUrl() + "/join.html",
-      googleEnabled: readiness().google.enabled,
-    }),
-  );
-  app.get("/shop-qr.png", async (_req, res) =>
-    res.type("png").send(
-      await QRCode.toBuffer(baseUrl() + "/join.html", {
-        width: 720,
-        margin: 4,
-      }),
-    ),
-  );
+  const shopId = (value: unknown) => typeof value === "string" && value ? value : "default";
+  const shopToken = (token: string, shop: string) => digest(shop === "default" ? token : token + ":" + shop);
+  async function shopInfo(id: string) {
+    return (await db.query("SELECT id,name,color,stamp_goal FROM coffee.shops WHERE id=$1", [id])).rows[0];
+  }
+  app.get("/api/shop", async (req, res) => {
+    const shop = await shopInfo(shopId(req.query.shop));
+    if (!shop) { res.status(404).json({ error: "Shop not found" }); return; }
+    res.json({ id: shop.id, name: shop.name, color: shop.color, stampGoal: shop.stamp_goal,
+      joinUrl: publicBaseUrl() ? baseUrl() + "/join.html?shop=" + encodeURIComponent(shop.id) : null, googleEnabled: readiness().google.enabled });
+  });
+  app.get("/shop-qr.png", async (req, res) => {
+    const shop = await shopInfo(shopId(req.query.shop));
+    if (!shop) { res.sendStatus(404); return; }
+    res.type("png").send(await QRCode.toBuffer(baseUrl() + "/join.html?shop=" + encodeURIComponent(shop.id), { width: 720, margin: 4 }));
+  });
+  app.get("/api/staff/shop", staff, async (_req, res) => res.json(await shopInfo(res.locals.shopId)));
+  app.post("/api/staff/shop", staff, async (req, res) => {
+    if (res.locals.role !== "owner") { res.status(403).json({ error: "Owner access required" }); return; }
+    const name = typeof req.body.name === "string" ? req.body.name.trim() : "";
+    if (!name || name.length > 80 || typeof req.body.color !== "string" || !/^#[a-fA-F0-9]{6}$/.test(req.body.color)) {
+      res.status(400).json({ error: "Enter a shop name and a valid color." }); return;
+    }
+    await db.query("UPDATE coffee.shops SET name=$1,color=$2 WHERE id=$3", [name, req.body.color, res.locals.shopId]);
+    res.json(await shopInfo(res.locals.shopId));
+  });
   app.get("/api/customer-session", async (req, res) => {
     let token = req.cookies.coffee_customer;
     if (!validJoinToken(token)) {
@@ -247,14 +265,15 @@ export function createHostedApp(
         maxAge: 365 * 24 * 3600000,
       });
     }
+    const shop = shopId(req.query.shop);
     await db.query(
-      "UPDATE coffee.customer_enrollments SET token_hash=$1 WHERE token_hash=$2",
-      [digest(token), token],
+      "UPDATE coffee.customer_enrollments e SET token_hash=$1 FROM coffee.members m WHERE e.member_id=m.id AND m.shop_id=$3 AND e.token_hash=$2",
+      [shopToken(token, shop), token, shop],
     );
     const row = (
       await db.query(
-        "SELECT member_id FROM coffee.customer_enrollments WHERE token_hash=$1 OR token_hash=$2 ORDER BY CASE WHEN token_hash=$1 THEN 0 ELSE 1 END LIMIT 1",
-        [digest(token), token],
+        "SELECT e.member_id FROM coffee.customer_enrollments e JOIN coffee.members m ON m.id=e.member_id WHERE m.shop_id=$3 AND (e.token_hash=$1 OR e.token_hash=$2) ORDER BY CASE WHEN e.token_hash=$1 THEN 0 ELSE 1 END LIMIT 1",
+        [shopToken(token, shop), token, shop],
       )
     ).rows[0];
     const m = row ? await readMember(db, row.member_id) : null;
@@ -280,14 +299,17 @@ export function createHostedApp(
       return;
     }
     try {
+      const shop = shopId(req.body.shopId);
+      if (!(await shopInfo(shop))) { res.status(404).json({ error: "Shop not found" }); return; }
       await db.query(
-        "UPDATE coffee.customer_enrollments SET token_hash=$1 WHERE token_hash=$2",
-        [digest(req.cookies.coffee_customer), req.cookies.coffee_customer],
+        "UPDATE coffee.customer_enrollments e SET token_hash=$1 FROM coffee.members m WHERE e.member_id=m.id AND m.shop_id=$3 AND e.token_hash=$2",
+        [shopToken(req.cookies.coffee_customer, shop), req.cookies.coffee_customer, shop],
       );
       const raw = (
-        await db.query("SELECT coffee.enroll_customer($1,$2) AS m", [
+        await db.query("SELECT coffee.enroll_customer($1,$2,$3) AS m", [
           req.body.name,
-          digest(req.cookies.coffee_customer),
+          shopToken(req.cookies.coffee_customer, shop),
+          shop,
         ])
       ).rows[0].m;
       const m = await readMember(db, raw.id);
@@ -326,8 +348,8 @@ export function createHostedApp(
     res.json(
       (
         await db.query(
-          'SELECT m.id,name,stamps,rewards,stamp_goal AS "stampGoal" FROM coffee.members m CROSS JOIN coffee.programme p WHERE position(lower($1) in lower(name))>0 OR m.id=$1 ORDER BY version DESC LIMIT 50',
-          [q],
+          'SELECT m.id,m.name,stamps,rewards,stamp_goal AS "stampGoal" FROM coffee.members m JOIN coffee.shops p ON p.id=m.shop_id WHERE m.shop_id=$2 AND (position(lower($1) in lower(m.name))>0 OR m.id=$1) ORDER BY version DESC LIMIT 50',
+          [q, res.locals.shopId],
         )
       ).rows,
     );
@@ -335,8 +357,9 @@ export function createHostedApp(
   app.post("/api/staff/enroll", staff, async (req, res) => {
     try {
       const raw = (
-        await db.query("SELECT coffee.enroll_customer($1) AS m", [
+        await db.query("SELECT coffee.enroll_customer($1,NULL,$2) AS m", [
           req.body.name,
+          res.locals.shopId,
         ])
       ).rows[0].m;
       res.status(201).json(publicMember(await readMember(db, raw.id)));
@@ -347,7 +370,7 @@ export function createHostedApp(
   app.get("/api/staff/members/:id", staff, async (req, res) => {
     const id = String(req.params.id),
       m = await readMember(db, id);
-    if (!m) {
+    if (!m || m.shop_id !== res.locals.shopId) {
       res.status(404).json({ error: "Membership not found" });
       return;
     }
@@ -367,10 +390,35 @@ export function createHostedApp(
       deliveries: deliveries.rows,
     });
   });
+  app.post("/api/staff/members/:id/scan", staff, async (req, res, next) => {
+    const id = String(req.params.id), key = req.get("Idempotency-Key");
+    const member = await readMember(db, id);
+    if (!member || member.shop_id !== res.locals.shopId) { res.status(404).json({ error: "Membership not found" }); return; }
+    if (!key || !/^[a-zA-Z0-9-]{16,100}$/.test(key)) {
+      res.status(400).json({ error: "A valid scan request key is required" });
+      return;
+    }
+    if (!(await allowed(req, "scan", 60, 60000))) {
+      res.status(429).json({ error: "Too many scans. Please wait a minute and retry." });
+      return;
+    }
+    try {
+      const result = (await db.query("SELECT coffee.scan_purchase($1,$2,$3) AS result", [id, key, res.locals.actor])).rows[0].result;
+      res.json(result);
+      if (result.awarded) background(deliverHosted(db, id));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "";
+      if (["Membership not found", "Idempotency key already used for another action"].includes(message)) {
+        res.status(message === "Membership not found" ? 404 : 409).json({ error: message });
+      } else next(error);
+    }
+  });
   app.post("/api/staff/members/:id/:action", staff, async (req, res) => {
     const action = String(req.params.action),
       id = String(req.params.id),
       key = req.get("Idempotency-Key");
+    const member = await readMember(db, id);
+    if (!member || member.shop_id !== res.locals.shopId) { res.status(404).json({ error: "Membership not found" }); return; }
     if (
       !["purchase", "redeem"].includes(action) ||
       !key ||
@@ -408,7 +456,7 @@ export function createHostedApp(
     }
   });
   app.get("/api/staff/programme", staff, async (_req, res) =>
-    res.json({ stampGoal: await goal(db) }),
+    res.json({ stampGoal: await goal(db, res.locals.shopId) }),
   );
   app.post("/api/staff/programme", staff, async (req, res) => {
     if (res.locals.role !== "owner") {
@@ -427,7 +475,8 @@ export function createHostedApp(
     }
     try {
       const r = (
-        await db.query("SELECT coffee.change_goal($1,$2) AS result", [
+        await db.query("SELECT coffee.change_shop_goal($1,$2,$3) AS result", [
+          res.locals.shopId,
           req.body.stampGoal,
           res.locals.actor,
         ])
@@ -447,8 +496,8 @@ export function createHostedApp(
     }
     const j = (
       await db.query(
-        "UPDATE coffee.jobs SET status='pending',next_at=0,error=NULL WHERE id=$1 AND status IN ('retry','blocked','waiting-save','failed') RETURNING member_id",
-        [req.params.job],
+        "UPDATE coffee.jobs SET status='pending',next_at=0,error=NULL WHERE id=$1 AND member_id IN (SELECT id FROM coffee.members WHERE shop_id=$2) AND status IN ('retry','blocked','waiting-save','failed') RETURNING member_id",
+        [req.params.job, res.locals.shopId],
       )
     ).rows[0];
     if (!j) {

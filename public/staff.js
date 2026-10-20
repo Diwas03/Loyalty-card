@@ -3,6 +3,8 @@ const message = (t) => ($("#message").textContent = t);
 let selected,
   controls,
   role,
+  scanStamping = false,
+  scanGeneration = 0,
   busy = false,
   pending;
 try {
@@ -182,8 +184,7 @@ $("#logout").onclick = async () => {
     message(e.message);
   }
 };
-for (const action of ["purchase", "redeem"])
-  $("#" + action).onclick = async () => {
+async function recordAction(action, automatic = false) {
     if (!selected || busy) return;
     const id = selected;
     if (pending && (pending.id !== id || pending.action !== action)) {
@@ -193,7 +194,7 @@ for (const action of ["purchase", "redeem"])
       return;
     }
     if (
-      !confirm(
+      !automatic && !confirm(
         action === "purchase"
           ? "Confirm one paid qualifying coffee?"
           : "Confirm one free coffee reward redemption?",
@@ -201,17 +202,18 @@ for (const action of ["purchase", "redeem"])
     )
       return;
     if (!pending) {
-      pending = { id, action, key: crypto.randomUUID() };
+      pending = { id, action, key: crypto.randomUUID(), source: automatic ? "scan" : "manual" };
       sessionStorage.setItem("coffeePending", JSON.stringify(pending));
     }
     busy = true;
     let saved = false;
     $("#purchase").disabled = $("#redeem").disabled = true;
     try {
-      await api(`/api/staff/members/${id}/${action}`, {
+      const scanned = pending.source === "scan";
+      const result = await api(`/api/staff/members/${id}/${scanned ? "scan" : action}`, {
         method: "POST",
         headers: { "Idempotency-Key": pending.key },
-        body: JSON.stringify({ confirm: true }),
+        body: JSON.stringify(scanned ? {} : { confirm: true }),
       });
       saved = true;
       pending = null;
@@ -219,7 +221,9 @@ for (const action of ["purchase", "redeem"])
       busy = false;
       await lookup();
       await search();
-      message("Saved. Wallet update queued separately.");
+      message(scanned
+        ? (result.awarded ? "One stamp added. Scan the next paid coffee when ready." : "This card was just scanned. No extra stamp was added. Use Record one paid coffee for another purchase.")
+        : "Saved. Wallet update queued separately.");
     } catch (e) {
       busy = false;
       if (saved) {
@@ -240,31 +244,57 @@ for (const action of ["purchase", "redeem"])
       $("#purchase").disabled = $("#redeem").disabled = false;
     }
   };
+for (const action of ["purchase", "redeem"])
+  $("#" + action).onclick = () => recordAction(action);
 $("#scan").onclick = async () => {
+  if (busy || !role || $("#scan").disabled) return;
+  if (pending && pending.action !== "purchase") {
+    message("Resolve your previous request before scanning another purchase.");
+    return;
+  }
+  const generation = ++scanGeneration;
+  let handled = false;
+  $("#scan").disabled = true;
   try {
     controls?.stop();
-    controls =
-      await new ZXingBrowser.BrowserQRCodeReader().decodeFromVideoDevice(
-        undefined,
-        "video",
-        async (result, _err, scanner) => {
-          if (result) {
-            scanner.stop();
-            $("#member").value = result.getText();
-            try {
-              await lookup();
-              message("Membership found. Confirm an action below.");
-            } catch (e) {
-              message(e.message);
-            }
-          }
-        },
-      );
-  } catch (e) {
-    message("Camera unavailable: " + e.message + ". Use manual lookup.");
+    message(scanStamping ? "Point the camera at the customer's QR. A scan records one paid coffee." : "Point the camera at the customer's QR.");
+    const scannerControls = await new ZXingBrowser.BrowserQRCodeReader().decodeFromVideoDevice(
+      undefined,
+      "video",
+      async (result, _err, scanner) => {
+        if (!result || handled || generation !== scanGeneration) return;
+        handled = true;
+        scanner.stop();
+        try {
+          const id = result.getText().trim();
+          if (!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(id))
+            throw Error("This QR is not a customer membership card.");
+          $("#member").value = id;
+          await lookup();
+          if (generation !== scanGeneration) return;
+          if (scanStamping) await recordAction("purchase", true);
+          else message("Membership found. Confirm an action below.");
+        } catch (error) {
+          message(error.message);
+        } finally {
+          if (generation === scanGeneration) $("#scan").disabled = false;
+        }
+      },
+    );
+    if (generation !== scanGeneration || handled) scannerControls.stop();
+    else controls = scannerControls;
+  } catch (error) {
+    if (generation === scanGeneration) {
+      $("#scan").disabled = false;
+      message("Camera unavailable: " + error.message + ". Use manual lookup.");
+    }
   }
 };
-$("#stop").onclick = () => controls?.stop();
+$("#stop").onclick = () => {
+  ++scanGeneration;
+  controls?.stop();
+  $("#scan").disabled = !role;
+};
 $("#staff-account").onsubmit = async (event) => {
   event.preventDefault();
   const form = event.currentTarget;
@@ -283,11 +313,33 @@ $("#staff-account").onsubmit = async (event) => {
     button.disabled = false;
   }
 };
+$("#shop-branding").onsubmit = async (event) => {
+  event.preventDefault();
+  try {
+    const shop = await api("/api/staff/shop", { method: "POST", body: JSON.stringify({ name: $("#shop-name").value, color: $("#shop-color").value }) });
+    $("nav a").textContent = "☕ " + shop.name;
+    message("Shop branding saved.");
+  } catch (error) { message(error.message); }
+};
 window.addEventListener("pagehide", () => controls?.stop());
 (async () => {
   try {
     const me = await api("/api/staff/me");
     role = me.role;
+    scanStamping = me.scanStamping === true;
+    if (me.shopId) {
+      $("#shop-qr-link").href = "/shop.html?shop=" + encodeURIComponent(me.shopId);
+      const shop = await api("/api/staff/shop");
+      $("nav a").textContent = "☕ " + shop.name;
+      $("#shop-name").value = shop.name;
+      $("#shop-color").value = shop.color;
+      if (role === "owner") $("#shop-branding").hidden = false;
+    }
+    $("#scan").disabled = false;
+    if (scanStamping) {
+      $("#scan").textContent = "Scan & award 1 stamp";
+      $("#scan-help").textContent = "Each scan records one paid coffee automatically. The camera stops after a card is read. Repeat scans within 5 seconds add no extra stamp. Redemption stays manual.";
+    }
     if (role === "owner") {
       if (me.accountsEnabled) $("#accounts-section").hidden = false;
       $("#programme-section").hidden = false;

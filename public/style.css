@@ -27,7 +27,7 @@ section,
   background: white;
 }
 .card {
-  background: #41291d;
+  background: var(--shop-color, #41291d);
   color: #fff;
   text-align: center;
 }

@@ -195,6 +195,15 @@ test("Google signed save JWT and stable REST object updates using a local HTTP s
     assert.equal(patch.body.barcode.value, m.id);
     assert.equal(patch.body.loyaltyPoints.balance.string, "1/8");
     assert.equal(patch.body.secondaryLoyaltyPoints.balance.int, 0);
+    const otherShop = { ...m, id: "other-shop-member", shop_id: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", shop_name: "Another Coffee Shop", shop_color: "#224466" };
+    const otherSave = await saveGoogle(otherShop);
+    const { payload: otherPayload } = await jwtVerify(otherSave.split("/").at(-1)!, await importSPKI(publicKey, "RS256"), { issuer: "test@example.iam.gserviceaccount.com", audience: "google" });
+    const otherClass = calls.filter(c => c.url.endsWith("/loyaltyClass")).at(-1)!.body as any;
+    assert.equal(otherClass.id, "123456.shop_aaaaaaaabbbbccccddddeeeeeeeeeeee");
+    assert.equal(otherClass.programName, "Another Coffee Shop Rewards");
+    assert.equal(otherClass.hexBackgroundColor, "#224466");
+    assert.equal((otherPayload.payload as any).loyaltyObjects[0].classId, otherClass.id);
+    assert.notEqual(otherClass.id, cls.id);
     await db.end();
   } finally {
     delete process.env.GOOGLE_SERVICE_ACCOUNT_JSON;

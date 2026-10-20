@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import type { HostedDB } from "./hosted-db.js";
 export async function installHosted(db: HostedDB) {
   await db.query(readFileSync("supabase/schema.sql", "utf8"));
+  await db.query(readFileSync("supabase/shops.sql", "utf8"));
   await protectLegacyTables(db);
 }
 export async function hostedStatus(db: HostedDB) {
@@ -74,6 +75,7 @@ export async function importLegacyPublic(db: HostedDB) {
     await db.query(
       "UPDATE coffee.programme SET stamp_goal=(SELECT stamp_goal FROM public.programme WHERE id=1) WHERE id=1",
     );
+  await db.query("UPDATE coffee.shops SET stamp_goal=(SELECT stamp_goal FROM coffee.programme WHERE id=1) WHERE id='default'");
   await db.query(
     "SELECT setval('coffee.revision',GREATEST(COALESCE((SELECT max(version) FROM coffee.members),1),1),true)",
   );

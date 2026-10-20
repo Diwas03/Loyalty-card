@@ -1,6 +1,7 @@
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 SET search_path = coffee, public, extensions;
--- Run in the Supabase SQL editor. Private server-only schema; never expose it through the Data API.
+-- Base schema: apply shops.sql immediately afterwards (or use npm run hosted:schema).
+-- Private server-only schema; never expose it through the Data API.
 CREATE SCHEMA IF NOT EXISTS coffee;
 REVOKE ALL ON SCHEMA coffee FROM PUBLIC;
 CREATE SEQUENCE IF NOT EXISTS coffee.revision;
@@ -26,6 +27,8 @@ CREATE TABLE IF NOT EXISTS coffee.customer_enrollments(token_hash text PRIMARY K
 CREATE TABLE IF NOT EXISTS coffee.wallet_issuance(member_id text PRIMARY KEY REFERENCES coffee.members(id),created_at bigint NOT NULL);
 CREATE TABLE IF NOT EXISTS coffee.programme_changes(id bigserial PRIMARY KEY,actor text NOT NULL,old_goal int NOT NULL,new_goal int NOT NULL,created_at bigint NOT NULL);
 CREATE TABLE IF NOT EXISTS coffee.request_limits(key text PRIMARY KEY,window_id bigint NOT NULL,count int NOT NULL);
+CREATE TABLE IF NOT EXISTS coffee.scan_requests(key text PRIMARY KEY,member_id text NOT NULL REFERENCES coffee.members(id),result jsonb NOT NULL,created_at bigint NOT NULL,awarded boolean NOT NULL);
+CREATE INDEX IF NOT EXISTS coffee_recent_scans ON coffee.scan_requests(member_id,created_at DESC) WHERE awarded=true;
 CREATE OR REPLACE FUNCTION coffee.enroll_customer(p_name text,p_token text DEFAULT NULL) RETURNS jsonb LANGUAGE plpgsql AS $$
 DECLARE m coffee.members; BEGIN
  PERFORM pg_advisory_xact_lock(7342101);
@@ -41,12 +44,29 @@ DECLARE m coffee.members; op coffee.operations; goal int; result jsonb; BEGIN
  IF FOUND THEN IF op.member_id<>p_id OR op.kind<>p_kind THEN RAISE EXCEPTION 'Idempotency key already used for another action'; END IF;RETURN op.result;END IF;
  IF p_kind NOT IN ('purchase','redeem') THEN RAISE EXCEPTION 'Unsupported loyalty action';END IF;
  SELECT * INTO m FROM coffee.members WHERE id=p_id FOR UPDATE;IF NOT FOUND THEN RAISE EXCEPTION 'Membership not found';END IF;
- SELECT stamp_goal INTO goal FROM coffee.programme WHERE id=1;
+ SELECT stamp_goal INTO goal FROM coffee.shops WHERE id=m.shop_id;
  IF p_kind='redeem' AND m.rewards<1 THEN RAISE EXCEPTION 'No reward available';END IF;
  UPDATE coffee.members SET stamps=CASE WHEN p_kind='purchase' THEN (m.stamps+1)%goal ELSE m.stamps END,rewards=CASE WHEN p_kind='purchase' THEN m.rewards+CASE WHEN m.stamps=goal-1 THEN 1 ELSE 0 END ELSE m.rewards-1 END,version=nextval('coffee.revision') WHERE id=p_id RETURNING * INTO m;
  INSERT INTO coffee.jobs(member_id,version) VALUES(m.id,m.version);
  result=jsonb_build_object('id',m.id,'stamps',m.stamps,'rewards',m.rewards,'version',m.version,'stampGoal',goal);
  INSERT INTO coffee.operations VALUES(p_key,p_id,p_kind,result,p_actor,(extract(epoch FROM clock_timestamp())*1000)::bigint);RETURN result;END $$;
+CREATE OR REPLACE FUNCTION coffee.scan_purchase(p_id text,p_key text,p_actor text) RETURNS jsonb LANGUAGE plpgsql AS $$
+DECLARE prior coffee.scan_requests; recent bigint; now_ms bigint; result jsonb; BEGIN
+ PERFORM pg_advisory_xact_lock(7342101);
+ SELECT * INTO prior FROM coffee.scan_requests WHERE key=p_key;
+ IF FOUND THEN IF prior.member_id<>p_id THEN RAISE EXCEPTION 'Idempotency key already used for another action';END IF;RETURN prior.result;END IF;
+ IF EXISTS(SELECT 1 FROM coffee.operations WHERE key=p_key AND (member_id<>p_id OR kind<>'purchase')) THEN RAISE EXCEPTION 'Idempotency key already used for another action';END IF;
+ now_ms=(extract(epoch FROM clock_timestamp())*1000)::bigint;
+ SELECT max(created_at) INTO recent FROM coffee.scan_requests WHERE member_id=p_id AND awarded=true;
+ IF recent IS NOT NULL AND recent>now_ms-5000 THEN
+  SELECT jsonb_build_object('id',m.id,'stamps',m.stamps,'rewards',m.rewards,'version',m.version,'stampGoal',p.stamp_goal,'awarded',false) INTO result FROM coffee.members m JOIN coffee.shops p ON p.id=m.shop_id WHERE m.id=p_id;
+  IF result IS NULL THEN RAISE EXCEPTION 'Membership not found';END IF;
+ ELSE
+  result=coffee.mutate_member(p_id,'purchase',p_key,p_actor)||jsonb_build_object('awarded',true);
+ END IF;
+ INSERT INTO coffee.scan_requests VALUES(p_key,p_id,result,now_ms,(result->>'awarded')::boolean);
+ RETURN result;
+END $$;
 CREATE OR REPLACE FUNCTION coffee.change_goal(p_goal int,p_actor text) RETURNS jsonb LANGUAGE plpgsql AS $$
 DECLARE old_goal int; rev bigint; BEGIN
  PERFORM pg_advisory_xact_lock(7342101);

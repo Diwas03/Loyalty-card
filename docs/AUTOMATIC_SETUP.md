@@ -4,20 +4,59 @@ Production URL: **https://loyalty-card-pi.vercel.app**.
 
 ## Create staff accounts in the website
 
-Open `/register.html` to create the first owner account with your name, chosen
-username and a new password of 12–200 characters. No shop setup password or
-`STAFF_PASSWORD_HASH` setting is required for registration. The first person who
-registers becomes the owner, so complete registration before sharing an unclaimed
-shop's link. No predefined account is created automatically.
+Open `/register.html` to create a shop with its name, your name, a globally unique
+username and a password of 12–200 characters. No shop setup password or
+`STAFF_PASSWORD_HASH` setting is required for registration. Each registration creates
+a separate shop and its owner. The first owner keeps the original/default shop's
+existing memberships. No predefined account is created automatically.
 Passwords are hashed with scrypt before they are stored in the database.
 
 Sign in at `/login.html`. Owners see **Create a staff account** in their dashboard
 and can create individual staff usernames and passwords. Staff can sign in and
 manage loyalty cards but cannot create accounts or change owner-only settings.
-Public registration closes atomically after the first account exists, including
-simultaneous setup requests. Existing staff accounts and passwords are preserved.
-If an owner already exists, use that account or the private `hosted:staff` helper;
-registration cannot be used to take over or reset an existing shop.
+New-shop registration does not join or reset an existing shop. To join an existing
+shop as staff, ask its owner to create your account. Existing accounts and balances
+are retained in the default shop; username collisions are rejected atomically.
+
+## Multiple shops with one Wallet credential
+
+Configure one platform `GOOGLE_ISSUER_ID` and `GOOGLE_SERVICE_ACCOUNT_JSON` in
+Vercel Production. Every shop gets a distinct Google LoyaltyClass, shop name and
+card color. A customer's card belongs to one shop; a customer joining two shops
+gets two separate memberships and balances. No Google private keys are stored in
+shop/account records or sent to the browser. The issuer account and its approval
+must cover your platform's programmes; independently owned issuer accounts need
+their own authorization and are not connected by this shared-issuer workflow.
+
+Owners can change their shop name and card color under Programme settings. Use
+**Print shop QR** from that shop's staff dashboard; it includes its shop ID in
+`/join.html?shop=...`. A browser can keep separate memberships for multiple shops.
+Staff searches, purchases, scans, reward settings and delivery retries are scoped
+to the authenticated shop, not a shop ID supplied by the caller. Private member
+UUIDs remain the customer-card bearer links, as before.
+
+The existing/default shop retains the historical `.demo_coffee` Wallet class so
+installed cards keep their identity. New shop class suffixes use stable shop IDs.
+Changing programme branding updates its class when a real save is next requested.
+
+## Scan to award a stamp
+
+On the hosted staff dashboard, **Scan & award 1 stamp** intentionally starts a
+purchase scan. The first decoded customer QR records one paid coffee, stops the
+camera, refreshes the balance and queues a Wallet update. Only authenticated staff
+or owners of that customer's shop can do this. Redemption remains manual.
+
+Repeated frames are handled once. Server-side scan requests are idempotent and a
+five-second per-member guard suppresses accidental rapid rescans, including from
+another staff device. Suppressed requests retain their result even if retried later.
+Use the manual purchase action for another legitimate coffee within that interval.
+An ambiguous network response retains the same key across reloads; retry the same
+scan before switching customers. This does not identify physical POS sales: two
+deliberate scans more than five seconds apart are separate purchases.
+
+Validation: `npm run test:hosted`, `npm run test:scanner` and `npm test`. Scanner
+browser tests use simulated decoded frames with a real PostgreSQL backend; they
+do not claim physical camera or phone Wallet verification.
 
 The Vercel function initializes the private schema in a locked transaction before
 accepting API requests. The schema SQL is explicitly included in the function
