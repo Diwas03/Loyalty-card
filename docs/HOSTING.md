@@ -1,5 +1,7 @@
 # Shop QR + Supabase + Vercel phone testing
 
+For the latest connected deployment and automated schema/Cron configuration, start with [Automatic setup](AUTOMATIC_SETUP.md). Integration-provided POSTGRES_URL aliases are supported, and the Production Vercel hostname supplies a stable origin fallback. The older SQLite flow below is for historical data imports only.
+
 The shop QR opens **`/join.html`**, never one customer's QR. A visitor chooses a nickname and confirms membership; the app opens the real server-signed Google Wallet flow. Google requires the customer to confirm **Add**. QR scanning cannot silently install a card.
 
 A random HttpOnly customer cookie lets the same browser re-open its membership; only its SHA-256 hash is stored in the database. Repeat submissions reuse that membership and never reset its balance. Another browser/phone creates a different membership. There is no verified email/phone identity: preserve the private card link. A shared tablet/browser would reuse its customer, so the shop QR should be scanned on each customer's own phone. Clearing cookies does not identify a returning person; their private link or saved Wallet QR is the recovery mechanism.

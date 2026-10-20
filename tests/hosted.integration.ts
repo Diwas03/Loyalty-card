@@ -194,3 +194,45 @@ test("private Postgres schema denies untrusted database roles", async () => {
     await db.query("DROP ROLE coffee_test_visitor");
   }
 });
+
+test("hosted configuration is repeatable and legacy public import preserves identities, balance and ledger", async () => {
+  const { migrate, transact } = await import("../src/db.js");
+  const { installHosted, importLegacyPublic, hostedStatus } =
+    await import("../src/hosted-setup.js");
+  await installHosted(db);
+  await migrate(db);
+  assert.equal(
+    (
+      await db.query(
+        "SELECT relrowsecurity FROM pg_class WHERE oid='public.members'::regclass",
+      )
+    ).rows[0].relrowsecurity,
+    true,
+  );
+  const original = (await db.query("SELECT * FROM public.members LIMIT 1"))
+    .rows[0];
+  await transact(db, original.id, "purchase", randomUUID(), "legacy-staff");
+  const c = await db.connect();
+  try {
+    await c.query("BEGIN");
+    await c.query("SELECT pg_advisory_xact_lock(7342101)");
+    await c.query("SELECT pg_advisory_xact_lock(7342102)");
+    const imported = await importLegacyPublic(c);
+    assert.equal(imported.imported, true);
+    await c.query("COMMIT");
+  } catch (e) {
+    await c.query("ROLLBACK");
+    throw e;
+  } finally {
+    c.release();
+  }
+  const m = await readMember(db, original.id);
+  assert.equal(m.stamps, 1);
+  assert.equal(m.apple_token, original.apple_token);
+  assert.equal(
+    (await db.query("SELECT actor FROM coffee.operations")).rows[0].actor,
+    "legacy-staff",
+  );
+  await assert.rejects(importLegacyPublic(db), /Refusing to overwrite/);
+  assert.equal((await hostedStatus(db)).legacyPublicTables, true);
+});

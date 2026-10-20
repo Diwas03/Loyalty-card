@@ -4,7 +4,7 @@ import cookieParser from "cookie-parser";
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import QRCode from "qrcode";
 import { verifyPassword } from "./auth.js";
-import { readiness, baseUrl } from "./config.js";
+import { readiness, baseUrl, publicBaseUrl } from "./config.js";
 import { saveGoogle } from "./google.js";
 import { validJoinToken } from "./customer-token.js";
 import {
@@ -58,7 +58,7 @@ export function createHostedApp(
   const cookie = {
     httpOnly: true,
     sameSite: "lax" as const,
-    secure: !!process.env.PUBLIC_BASE_URL,
+    secure: !!publicBaseUrl(),
     path: "/",
   };
   const staff: express.RequestHandler = async (req, res, next) => {
@@ -127,6 +127,13 @@ export function createHostedApp(
       (!named && username === "legacy"
         ? process.env.STAFF_PASSWORD_HASH
         : undefined);
+    if (!named && !hash) {
+      res.status(503).json({
+        error:
+          "Hosted staff not configured: create an owner with npm run hosted:staff -- owner owner",
+      });
+      return;
+    }
     if (
       !verifyPassword(
         req.body.password,
@@ -159,8 +166,8 @@ export function createHostedApp(
     res.clearCookie("staff", cookie).json({ ok: true });
   });
   app.get("/healthz", async (_req, res) => {
-    await db.query("SELECT 1");
-    res.json({ status: "ok" });
+    await db.query("SELECT stamp_goal FROM coffee.programme WHERE id=1");
+    res.json({ status: "ok", schema: "coffee" });
   });
   app.get("/api/config", async (_req, res) =>
     res.json({
@@ -186,14 +193,12 @@ export function createHostedApp(
     }),
   );
   app.get("/shop-qr.png", async (_req, res) =>
-    res
-      .type("png")
-      .send(
-        await QRCode.toBuffer(baseUrl() + "/join.html", {
-          width: 720,
-          margin: 4,
-        }),
-      ),
+    res.type("png").send(
+      await QRCode.toBuffer(baseUrl() + "/join.html", {
+        width: 720,
+        margin: 4,
+      }),
+    ),
   );
   app.get("/api/customer-session", async (req, res) => {
     let token = req.cookies.coffee_customer;
@@ -204,10 +209,14 @@ export function createHostedApp(
         maxAge: 365 * 24 * 3600000,
       });
     }
+    await db.query(
+      "UPDATE coffee.customer_enrollments SET token_hash=$1 WHERE token_hash=$2",
+      [digest(token), token],
+    );
     const row = (
       await db.query(
-        "SELECT member_id FROM coffee.customer_enrollments WHERE token_hash=$1",
-        [digest(token)],
+        "SELECT member_id FROM coffee.customer_enrollments WHERE token_hash=$1 OR token_hash=$2 ORDER BY CASE WHEN token_hash=$1 THEN 0 ELSE 1 END LIMIT 1",
+        [digest(token), token],
       )
     ).rows[0];
     const m = row ? await readMember(db, row.member_id) : null;
@@ -222,15 +231,17 @@ export function createHostedApp(
       req.body.accept !== true ||
       !validJoinToken(req.cookies.coffee_customer)
     ) {
-      res
-        .status(400)
-        .json({
-          error:
-            "Confirm membership and allow cookies; refresh this page to start",
-        });
+      res.status(400).json({
+        error:
+          "Confirm membership and allow cookies; refresh this page to start",
+      });
       return;
     }
     try {
+      await db.query(
+        "UPDATE coffee.customer_enrollments SET token_hash=$1 WHERE token_hash=$2",
+        [digest(req.cookies.coffee_customer), req.cookies.coffee_customer],
+      );
       const raw = (
         await db.query("SELECT coffee.enroll_customer($1,$2) AS m", [
           req.body.name,
@@ -324,12 +335,10 @@ export function createHostedApp(
       !/^[a-zA-Z0-9-]{16,100}$/.test(key) ||
       req.body.confirm !== true
     ) {
-      res
-        .status(400)
-        .json({
-          error:
-            "Valid action, explicit confirmation and Idempotency-Key required",
-        });
+      res.status(400).json({
+        error:
+          "Valid action, explicit confirmation and Idempotency-Key required",
+      });
       return;
     }
     try {
@@ -345,17 +354,15 @@ export function createHostedApp(
       background(deliverHosted(db, id));
     } catch (e) {
       const reason = e instanceof Error ? e.message : "";
-      res
-        .status(409)
-        .json({
-          error: [
-            "No reward available",
-            "Membership not found",
-            "Idempotency key already used for another action",
-          ].includes(reason)
-            ? reason
-            : "Could not record action; retry with the same request key",
-        });
+      res.status(409).json({
+        error: [
+          "No reward available",
+          "Membership not found",
+          "Idempotency key already used for another action",
+        ].includes(reason)
+          ? reason
+          : "Could not record action; retry with the same request key",
+      });
     }
   });
   app.get("/api/staff/programme", staff, async (_req, res) =>
@@ -386,11 +393,9 @@ export function createHostedApp(
       res.json(r);
       background(deliverHosted(db));
     } catch {
-      res
-        .status(409)
-        .json({
-          error: "Could not change goal; check current customer progress",
-        });
+      res.status(409).json({
+        error: "Could not change goal; check current customer progress",
+      });
     }
   });
   app.post("/api/staff/jobs/:job/retry", staff, async (req, res) => {
@@ -481,14 +486,12 @@ export function createHostedApp(
       _next: express.NextFunction,
     ) => {
       const status = (err as Error & { status?: number }).status;
-      res
-        .status(status === 400 || status === 413 ? status : 503)
-        .json({
-          error:
-            status === 400
-              ? "Invalid JSON request"
-              : "Service unavailable. Check database and server configuration.",
-        });
+      res.status(status === 400 || status === 413 ? status : 503).json({
+        error:
+          status === 400
+            ? "Invalid JSON request"
+            : "Service unavailable. Check database and server configuration.",
+      });
     },
   );
   return app;

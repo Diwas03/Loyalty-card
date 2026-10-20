@@ -9,12 +9,23 @@ export async function runOne(
   deliver?: (provider: string, id: string) => Promise<void>,
 ): Promise<boolean> {
   // Claim one ready job atomically using a CTE with FOR UPDATE SKIP LOCKED.
-  const { rows } = await db.query<{
+  const client = await db.connect();
+  let rows: {
     id: string;
     member_id: string;
     provider: string;
     attempts: string;
-  }>(`
+  }[];
+  try {
+    await client.query("BEGIN");
+    await client.query("SELECT pg_advisory_xact_lock(7342102)");
+    const { rows: claimedRows } = await client.query<{
+      id: string;
+      member_id: string;
+      provider: string;
+      attempts: string;
+    }>(
+      `
     WITH claimed AS (
       SELECT j.id FROM jobs j
       WHERE j.status IN ('pending', 'retry', 'blocked', 'working')
@@ -33,7 +44,18 @@ export async function runOne(
     UPDATE jobs SET status = 'working', next_at = $2
     FROM claimed WHERE jobs.id = claimed.id
     RETURNING jobs.id, jobs.member_id, jobs.provider, jobs.attempts
-  `, [Date.now(), Date.now() + 120000]);
+  `,
+      [Date.now(), Date.now() + 120000],
+    );
+
+    rows = claimedRows;
+    await client.query("COMMIT");
+  } catch (e) {
+    await client.query("ROLLBACK");
+    throw e;
+  } finally {
+    client.release();
+  }
 
   if (!rows.length) return false;
 
@@ -87,10 +109,9 @@ export async function runOne(
         for (const r of registrations) {
           const status = await pushApple(r.push_token);
           if (status === 410)
-            await db.query(
-              "DELETE FROM registrations WHERE push_token = $1",
-              [r.push_token],
-            );
+            await db.query("DELETE FROM registrations WHERE push_token = $1", [
+              r.push_token,
+            ]);
         }
       }
     }

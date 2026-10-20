@@ -23,10 +23,9 @@ test("shop self-enrollment requires consent and cookie, retries reuse membership
     .send({ name: "Coffee fan", accept: true })
     .expect(200);
   const id = first.body.member.id;
-  await db.query(
-    "UPDATE members SET stamps = 3, rewards = 1 WHERE id = $1",
-    [id],
-  );
+  await db.query("UPDATE members SET stamps = 3, rewards = 1 WHERE id = $1", [
+    id,
+  ]);
   const second = await customer
     .post("/api/join")
     .send({ name: "Changed nickname", accept: true })
@@ -92,5 +91,30 @@ test("printed shop QR uses the public join URL, never a customer membership", as
     .send({ name: "x", accept: true })
     .expect(403);
   delete process.env.PUBLIC_BASE_URL;
+  await db.end();
+});
+
+test("simultaneous first enrollment shares one membership and does not leave orphan customers", async () => {
+  const db = await memDb(),
+    app = createApp(db),
+    browser = request.agent(app);
+  await browser.get("/api/customer-session");
+  const [a, b] = await Promise.all([
+    browser
+      .post("/api/join")
+      .send({ accept: true, name: "Concurrent customer" }),
+    browser
+      .post("/api/join")
+      .send({ accept: true, name: "Concurrent customer" }),
+  ]);
+  assert.equal(a.status, 200);
+  assert.equal(b.status, 200);
+  assert.equal(a.body.member.id, b.body.member.id);
+  const count = (
+    await db.query(
+      "SELECT count(*) AS n FROM members WHERE name='Concurrent customer'",
+    )
+  ).rows[0].n;
+  assert.equal(Number(count), 1);
   await db.end();
 });

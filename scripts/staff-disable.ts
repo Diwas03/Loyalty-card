@@ -18,9 +18,7 @@ try {
       "SELECT COUNT(*) AS n FROM staff_accounts WHERE role = 'owner' AND enabled = 1",
     );
     if (Number(rows[0].n) <= 1)
-      throw new Error(
-        "Create another owner before disabling the last owner",
-      );
+      throw new Error("Create another owner before disabling the last owner");
   }
 
   await db.query("UPDATE staff_accounts SET enabled = 0 WHERE username = $1", [

@@ -1,5 +1,8 @@
 # Demo Coffee Shop · Single-shop loyalty pilot
 
+**Current connected-deployment setup:** read [Automatic setup and migration](docs/AUTOMATIC_SETUP.md). The latest server uses Postgres; older SQLite instructions below apply only to historical installations/imports. Vercel uses the private `coffee` schema, while the preceding server migration created `public` tables. The configuration command preserves source data and refuses ambiguous overwrites. Tests now use disposable real Postgres through Docker, not a database emulator.
+
+
 A Google Wallet first coffee-shop pilot built with TypeScript, Express and SQLite. Customers get a private browser card and a real Google Wallet save link; staff enroll customers, scan QRs, record coffees and redeem rewards. The server holds the official balance. A separate durable worker handles wallet delivery without reversing purchases when a provider fails.
 
 Google Wallet testing was reported successful by the project owner. This version's new workflows have been tested locally; they have **not** been retested on a physical phone. An iPhone opening a Google save link is not proof of native Apple Wallet support. Use the browser card on iOS unless your intended iOS wallet experience has been verified. Apple signing/callback code is retained as an optional separate integration, disabled by default.
@@ -133,4 +136,4 @@ An existing Chromium installation can be used with `CHROMIUM_PATH` (PowerShell: 
 
 Open `/shop.html` to print a **shared shop enrollment QR**; each customer scans it on their own phone, chooses a nickname and is taken to Google's real Add confirmation. Returning browsers reuse their membership without losing stamps. The membership QR inside a card is different: staff scans it to identify that customer.
 
-For **Supabase + Vercel**, follow [the complete hosting and cutover guide](docs/HOSTING.md). `vercel.json` uses the serverless Postgres backend; ordinary `npm start` still uses local SQLite. Do not deploy SQLite or the indefinite local worker to Vercel. The hosted database schema, importer, hosted staff tools, persistent retry endpoint and minute Cron setup are included. No accounts, hosted projects, paid services or public deployment were created automatically. Do not paste credentials into chat.
+For **Supabase + Vercel**, follow [the complete hosting and cutover guide](docs/HOSTING.md). `vercel.json` uses the serverless Postgres backend; ordinary `npm start` uses the legacy public-schema Postgres server. Do not deploy SQLite or the indefinite local worker to Vercel. The hosted database schema, importer, hosted staff tools, persistent retry endpoint and minute Cron setup are included. No accounts, hosted projects, paid services or public deployment were created automatically. Do not paste credentials into chat.

@@ -28,7 +28,8 @@ test("eighth stamp awards one reward; new cycle retains unused reward; redemptio
   const db = await memDb();
   const { rows } = await db.query("SELECT * FROM members LIMIT 1");
   const m = rows[0] as Member;
-  for (let i = 0; i < 8; i++) await transact(db, m.id, "purchase", randomUUID());
+  for (let i = 0; i < 8; i++)
+    await transact(db, m.id, "purchase", randomUUID());
   assert.equal((await member(db, m.id))!.stamps, 0);
   assert.equal((await member(db, m.id))!.rewards, 1);
   await transact(db, m.id, "purchase", randomUUID());
@@ -181,8 +182,12 @@ test("unconfigured wallet routes fail explicitly instead of simulating success",
   delete process.env.GOOGLE_SERVICE_ACCOUNT_FILE;
   delete process.env.APPLE_CERT_FILE;
   const app = createApp(db);
-  await request(app).get("/wallet/google/" + m.id).expect(503);
-  await request(app).get("/wallet/apple/" + m.id).expect(503);
+  await request(app)
+    .get("/wallet/google/" + m.id)
+    .expect(503);
+  await request(app)
+    .get("/wallet/apple/" + m.id)
+    .expect(503);
   await request(app)
     .get("/api/members/" + m.id + "/qr")
     .expect("Content-Type", /image\/png/)

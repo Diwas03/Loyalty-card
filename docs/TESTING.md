@@ -1,5 +1,7 @@
 # Test checklist and evidence
 
+Latest regression verification: **21 core tests**, **6 hosted Postgres integration tests**, and the Chromium workflow pass. All database concurrency checks now use real disposable Postgres. Earlier counts/SQLite notes below describe the original implementation; see [Automatic setup](AUTOMATIC_SETUP.md) for the current connected-deployment workflow.
+
 ## Automated local checks
 
 Run from repository root with Node 24, OpenSSL and Python 3:

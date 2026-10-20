@@ -1,4 +1,5 @@
 import pg from "pg";
+import { databaseOptions } from "./database-config.js";
 import { createHash } from "node:crypto";
 import { updateGoogle } from "./google.js";
 import { readiness } from "./config.js";
@@ -6,26 +7,7 @@ pg.types.setTypeParser(20, Number);
 export const digest = (s: string) =>
   createHash("sha256").update(s).digest("hex");
 export function hostedPool() {
-  if (!process.env.DATABASE_URL)
-    throw Error("Configure DATABASE_URL for hosted mode");
-  const url = new URL(process.env.DATABASE_URL);
-  const local = ["127.0.0.1", "localhost"].includes(url.hostname);
-  for (const key of ["sslmode", "sslcert", "sslkey", "sslrootcert"])
-    url.searchParams.delete(key);
-  return new pg.Pool({
-    connectionString: url.toString(),
-    max: 2,
-    connectionTimeoutMillis: 10000,
-    idleTimeoutMillis: 10000,
-    ssl: local
-      ? false
-      : {
-          rejectUnauthorized: true,
-          ...(process.env.DATABASE_CA_CERT
-            ? { ca: process.env.DATABASE_CA_CERT }
-            : {}),
-        },
-  });
+  return new pg.Pool(databaseOptions());
 }
 export type HostedDB = Pick<pg.Pool, "query">;
 export async function readMember(db: HostedDB, id: string) {

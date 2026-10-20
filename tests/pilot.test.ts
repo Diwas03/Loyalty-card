@@ -2,13 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import request from "supertest";
 import { randomUUID } from "node:crypto";
-import {
-  enroll,
-  member,
-  transact,
-  setGoal,
-  type Member,
-} from "../src/db.js";
+import { enroll, member, transact, setGoal, type Member } from "../src/db.js";
 import { setStaff, passwordHash } from "../src/auth.js";
 import { createApp } from "../src/app.js";
 import { runOne } from "../src/queue.js";
@@ -77,7 +71,10 @@ test("named staff enrollment, owner-only settings/retries, audit history, legacy
     .send({ username: "owner", password: "owner-password-test" })
     .expect(200);
   await owner.post("/api/staff/programme").send({ stampGoal: 10 }).expect(200);
-  assert.equal((await request(app).get("/api/members/" + id)).body.stampGoal, 10);
+  assert.equal(
+    (await request(app).get("/api/members/" + id)).body.stampGoal,
+    10,
+  );
   await setStaff(db, "barista", "barista-new-password");
   await staff.get("/api/staff/me").expect(401);
   await db.end();
@@ -88,7 +85,8 @@ test("configurable reward goal retains progress/rewards, queues updates and reje
   const m = await enroll(db, "Coffee fan");
   await transact(db, m.id, "purchase", randomUUID());
   await setGoal(db, 3, "owner");
-  for (let i = 0; i < 2; i++) await transact(db, m.id, "purchase", randomUUID());
+  for (let i = 0; i < 2; i++)
+    await transact(db, m.id, "purchase", randomUUID());
   assert.equal((await member(db, m.id))!.rewards, 1);
   assert.equal((await member(db, m.id))!.stamps, 0);
   await transact(db, m.id, "purchase", randomUUID());
@@ -149,10 +147,9 @@ test("retry budget is finite and per-member provider jobs cannot overtake an act
   });
   const { rows: jobs } = await db.query("SELECT status FROM jobs");
   assert.equal(jobs[0].status, "failed");
-  await db.query(
-    "UPDATE jobs SET status = 'working', next_at = $1",
-    [Date.now() + 120000],
-  );
+  await db.query("UPDATE jobs SET status = 'working', next_at = $1", [
+    Date.now() + 120000,
+  ]);
   await transact(db, m.id, "purchase", randomUUID());
   assert.equal(
     await runOne(db, async () =>

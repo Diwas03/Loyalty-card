@@ -1,14 +1,10 @@
+import { protectLegacyTables } from "./legacy-protection.js";
+import { databaseOptions } from "./database-config.js";
 import { Pool, PoolClient } from "pg";
 import { randomBytes, randomUUID } from "node:crypto";
 
 export function openDb(): Pool {
-  const connectionString = process.env.DATABASE_URL;
-  if (!connectionString) throw new Error("DATABASE_URL is not set");
-  return new Pool({
-    connectionString,
-    ssl: { rejectUnauthorized: false },
-    max: 10,
-  });
+  return new Pool(databaseOptions());
 }
 
 export type DB = Pool;
@@ -28,6 +24,7 @@ export async function migrate(db: DB): Promise<void> {
   const client = await db.connect();
   try {
     await client.query("BEGIN");
+    await client.query("SELECT pg_advisory_xact_lock(7342102)");
 
     await client.query(`
       CREATE TABLE IF NOT EXISTS members (
@@ -106,6 +103,7 @@ export async function migrate(db: DB): Promise<void> {
       CREATE INDEX IF NOT EXISTS operations_member ON operations (member_id, created_at);
     `);
 
+    await protectLegacyTables(client);
     await client.query("COMMIT");
   } catch (e) {
     await client.query("ROLLBACK");
@@ -124,12 +122,9 @@ export async function migrate(db: DB): Promise<void> {
   }
 }
 
-export async function member(
-  db: DB,
-  id: string,
-): Promise<Member | undefined> {
+export async function member(db: DB, id: string): Promise<Member | undefined> {
   const { rows } = await db.query<Member>(
-    "SELECT members.*, programme.stamp_goal FROM members CROSS JOIN programme WHERE members.id = $1",
+    "SELECT members.*, programme.stamp_goal FROM members JOIN programme ON programme.id=1 WHERE members.id = $1",
     [id],
   );
   return rows[0];
@@ -148,6 +143,7 @@ export async function transact(
   const client = await db.connect();
   try {
     await client.query("BEGIN");
+    await client.query("SELECT pg_advisory_xact_lock(7342102)");
 
     const { rows: existing } = await client.query(
       "SELECT * FROM operations WHERE key = $1",
@@ -162,12 +158,13 @@ export async function transact(
     }
 
     const { rows: mRows } = await client.query<Member>(
-      "SELECT members.*, programme.stamp_goal FROM members CROSS JOIN programme WHERE members.id = $1 FOR UPDATE",
+      "SELECT members.*, programme.stamp_goal FROM members JOIN programme ON programme.id=1 WHERE members.id = $1 FOR UPDATE",
       [id],
     );
     const m = mRows[0];
     if (!m) throw new Error("Membership not found");
-    if (kind === "redeem" && m.rewards < 1) throw new Error("No reward available");
+    if (kind === "redeem" && m.rewards < 1)
+      throw new Error("No reward available");
 
     const goal = m.stamp_goal || 8;
     const stamps = kind === "purchase" ? (m.stamps + 1) % goal : m.stamps;
@@ -240,6 +237,7 @@ export async function setGoal(
   const client = await db.connect();
   try {
     await client.query("BEGIN");
+    await client.query("SELECT pg_advisory_xact_lock(7342102)");
 
     const { rows: progRows } = await client.query<{ stamp_goal: string }>(
       "SELECT stamp_goal FROM programme FOR UPDATE",

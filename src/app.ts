@@ -1,3 +1,4 @@
+import { join, joinedMember } from "./join.js";
 import express from "express";
 import helmet from "helmet";
 import cookieParser from "cookie-parser";
@@ -13,7 +14,7 @@ import {
   setGoal,
 } from "./db.js";
 import { verifyPassword } from "./auth.js";
-import { readiness, baseUrl } from "./config.js";
+import { readiness, baseUrl, publicBaseUrl } from "./config.js";
 import { saveGoogle } from "./google.js";
 import { applePass } from "./apple.js";
 
@@ -60,9 +61,7 @@ export function createApp(db: DB) {
       (!req.is("application/json") ||
         (req.get("origin") &&
           req.get("origin") !==
-            (process.env.PUBLIC_BASE_URL
-              ? new URL(process.env.PUBLIC_BASE_URL).origin
-              : `http://${req.get("host")}`)))
+            (publicBaseUrl() ? publicBaseUrl() : `http://${req.get("host")}`)))
     ) {
       res.status(403).json({ error: "Same-origin JSON required" });
       return;
@@ -115,8 +114,7 @@ export function createApp(db: DB) {
         return;
       }
       res.locals.actor = String(s.username);
-      res.locals.role =
-        s.username === "legacy" ? "owner" : account!.role;
+      res.locals.role = s.username === "legacy" ? "owner" : account!.role;
       next();
     } catch (e) {
       next(e);
@@ -129,9 +127,7 @@ export function createApp(db: DB) {
       try {
         joinUrl = baseUrl() + "/join.html";
       } catch {}
-      const { rows } = await db.query(
-        "SELECT stamp_goal FROM programme",
-      );
+      const { rows } = await db.query("SELECT stamp_goal FROM programme");
       res.json({
         name: "Demo Coffee Shop",
         stampGoal: Number(rows[0].stamp_goal),
@@ -166,35 +162,19 @@ export function createApp(db: DB) {
     try {
       const req = _req;
       let token = req.cookies.coffee_customer;
-      const valid =
-        typeof token === "string" && /^[a-f0-9]{64}$/.test(token);
+      const valid = typeof token === "string" && /^[a-f0-9]{64}$/.test(token);
       if (!valid) {
         token = randomBytes(32).toString("hex");
         res.cookie("coffee_customer", token, {
           httpOnly: true,
           sameSite: "lax",
-          secure: !!process.env.PUBLIC_BASE_URL,
+          secure: !!publicBaseUrl(),
           maxAge: 365 * 24 * 3600000,
           path: "/",
         });
       }
-      // Look up member by enrollment token
-      const { rows } = await db.query(
-        `SELECT members.* FROM members
-         JOIN customer_enrollments e ON e.member_id = members.id
-         WHERE e.token_hash = $1`,
-        [token],
-      );
-      const m = rows[0] as Member | undefined;
-      // Attach stamp_goal for publicMember
-      let full: Member | undefined;
-      if (m) {
-        const { rows: prog } = await db.query(
-          "SELECT stamp_goal FROM programme",
-        );
-        full = { ...m, stamp_goal: Number(prog[0].stamp_goal) };
-      }
-      res.json({ member: full ? publicMember(full) : null });
+      const m = await joinedMember(db, token);
+      res.json({ member: m ? publicMember(m) : null });
     } catch (e) {
       next(e);
     }
@@ -218,11 +198,7 @@ export function createApp(db: DB) {
         }
         const name =
           typeof req.body.name === "string" ? req.body.name.trim() : "";
-        const m = await enroll(db, name);
-        await db.query(
-          "INSERT INTO customer_enrollments (token_hash, member_id, created_at) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
-          [token, m.id, Date.now()],
-        );
+        const m = await join(db, token, name);
         res.json({
           member: publicMember(m),
           customerUrl: "/?member=" + encodeURIComponent(m.id),
@@ -292,7 +268,7 @@ export function createApp(db: DB) {
         res.cookie("staff", token, {
           httpOnly: true,
           sameSite: "strict",
-          secure: !!process.env.PUBLIC_BASE_URL,
+          secure: !!publicBaseUrl(),
           maxAge: 8 * 3600000,
         });
         res.json({ ok: true });
@@ -369,14 +345,12 @@ export function createApp(db: DB) {
         res.sendStatus(404);
         return;
       }
-      res
-        .type("png")
-        .send(
-          await QRCode.toBuffer(String(req.params.id), {
-            width: 320,
-            margin: 3,
-          }),
-        );
+      res.type("png").send(
+        await QRCode.toBuffer(String(req.params.id), {
+          width: 320,
+          margin: 3,
+        }),
+      );
     } catch (e) {
       next(e);
     }
@@ -425,7 +399,7 @@ export function createApp(db: DB) {
       const q = String(req.query.q || "").slice(0, 80);
       const { rows } = await db.query(
         `SELECT members.id, name, stamps, rewards, stamp_goal AS "stampGoal"
-         FROM members CROSS JOIN programme
+         FROM members JOIN programme ON programme.id=1
          WHERE POSITION(LOWER($1) IN LOWER(name)) > 0 OR members.id = $2
          ORDER BY members.id DESC LIMIT 50`,
         [q, q],
@@ -500,40 +474,34 @@ export function createApp(db: DB) {
     }
   });
 
-  app.post(
-    "/api/staff/members/:id/:action",
-    staff,
-    async (req, res, next) => {
-      try {
-        const id = String(req.params.id),
-          action = String(req.params.action);
-        if (!["purchase", "redeem"].includes(action)) {
-          res.sendStatus(404);
-          return;
-        }
-        const key = req.get("Idempotency-Key");
-        if (
-          !key ||
-          !/^[a-zA-Z0-9-]{16,100}$/.test(key) ||
-          req.body.confirm !== true
-        ) {
-          res.status(400).json({
-            error: "Explicit confirmation and valid Idempotency-Key required",
-          });
-          return;
-        }
-        try {
-          res.json(
-            await transact(db, id, action, key, res.locals.actor),
-          );
-        } catch (e) {
-          res.status(409).json({ error: (e as Error).message });
-        }
-      } catch (e) {
-        next(e);
+  app.post("/api/staff/members/:id/:action", staff, async (req, res, next) => {
+    try {
+      const id = String(req.params.id),
+        action = String(req.params.action);
+      if (!["purchase", "redeem"].includes(action)) {
+        res.sendStatus(404);
+        return;
       }
-    },
-  );
+      const key = req.get("Idempotency-Key");
+      if (
+        !key ||
+        !/^[a-zA-Z0-9-]{16,100}$/.test(key) ||
+        req.body.confirm !== true
+      ) {
+        res.status(400).json({
+          error: "Explicit confirmation and valid Idempotency-Key required",
+        });
+        return;
+      }
+      try {
+        res.json(await transact(db, id, action, key, res.locals.actor));
+      } catch (e) {
+        res.status(409).json({ error: (e as Error).message });
+      }
+    } catch (e) {
+      next(e);
+    }
+  });
 
   app.use("/wallet", rateLimit({ windowMs: 60000, limit: 15 }));
 
@@ -706,19 +674,23 @@ export function createApp(db: DB) {
     },
   );
 
-  app.get("/apple/v1/passes/:type/:serial", passAuth, async (req, res, next) => {
-    try {
-      res
-        .set({
-          "Content-Type": "application/vnd.apple.pkpass",
-          "Cache-Control": "no-store",
-          "Last-Modified": new Date().toUTCString(),
-        })
-        .send(applePass(res.locals.member));
-    } catch {
-      res.sendStatus(503);
-    }
-  });
+  app.get(
+    "/apple/v1/passes/:type/:serial",
+    passAuth,
+    async (req, res, next) => {
+      try {
+        res
+          .set({
+            "Content-Type": "application/vnd.apple.pkpass",
+            "Cache-Control": "no-store",
+            "Last-Modified": new Date().toUTCString(),
+          })
+          .send(applePass(res.locals.member));
+      } catch {
+        res.sendStatus(503);
+      }
+    },
+  );
 
   app.post("/apple/v1/log", (_req, res) => res.sendStatus(200));
 

@@ -12,27 +12,45 @@ export const appleKeys = [
   "APPLE_WWDR_FILE",
   "PUBLIC_BASE_URL",
 ];
+export function publicBaseUrl(): string | undefined {
+  const configured =
+    process.env.PUBLIC_BASE_URL?.trim() ||
+    (process.env.VERCEL_ENV === "production" &&
+    process.env.VERCEL_PROJECT_PRODUCTION_URL
+      ? "https://" + process.env.VERCEL_PROJECT_PRODUCTION_URL
+      : undefined);
+  if (!configured) return undefined;
+  try {
+    const u = new URL(configured);
+    if (
+      u.protocol !== "https:" ||
+      u.username ||
+      u.password ||
+      u.search ||
+      u.hash ||
+      u.pathname !== "/"
+    )
+      return undefined;
+    return u.origin;
+  } catch {
+    return undefined;
+  }
+}
 export function missing(keys: string[]) {
-  return keys.filter((k) => !process.env[k]);
+  return keys.filter((k) =>
+    k === "PUBLIC_BASE_URL" ? !publicBaseUrl() : !process.env[k],
+  );
 }
 export function readiness() {
+  const googleMissing = missing(
+    googleKeys.filter(
+      (k) =>
+        k !== "GOOGLE_SERVICE_ACCOUNT_FILE" ||
+        !process.env.GOOGLE_SERVICE_ACCOUNT_JSON,
+    ),
+  );
   return {
-    google: {
-      enabled: !missing(
-        googleKeys.filter(
-          (k) =>
-            k !== "GOOGLE_SERVICE_ACCOUNT_FILE" ||
-            !process.env.GOOGLE_SERVICE_ACCOUNT_JSON,
-        ),
-      ).length,
-      missing: missing(
-        googleKeys.filter(
-          (k) =>
-            k !== "GOOGLE_SERVICE_ACCOUNT_FILE" ||
-            !process.env.GOOGLE_SERVICE_ACCOUNT_JSON,
-        ),
-      ),
-    },
+    google: { enabled: !googleMissing.length, missing: googleMissing },
     apple: {
       enabled:
         process.env.APPLE_WALLET_ENABLED === "true" &&
@@ -45,8 +63,8 @@ export function readiness() {
   };
 }
 export function baseUrl() {
-  const u = new URL(process.env.PUBLIC_BASE_URL!);
-  if (u.protocol !== "https:")
-    throw new Error("PUBLIC_BASE_URL must use public HTTPS");
-  return u.origin;
+  const origin = publicBaseUrl();
+  if (!origin)
+    throw Error("Configure PUBLIC_BASE_URL as a public HTTPS origin");
+  return origin;
 }
