@@ -20,7 +20,7 @@ document.querySelector("#register").onsubmit = async (event) => {
     const result = await response.json();
     if (!response.ok) throw Error(result.error || "Could not create the account. Please try again.");
     form.reset();
-    location.assign("/login.html?created=1&username=" + encodeURIComponent(result.username));
+    location.assign("/business/login.html?created=1&username=" + encodeURIComponent(result.username));
   } catch (error) {
     message.dataset.tone = "error";
     message.textContent = error.message;

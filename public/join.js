@@ -1,6 +1,7 @@
 (async () => {
   const $ = (s) => document.querySelector(s);
   const shopId = new URLSearchParams(location.search).get("shop") || "default";
+  const referralCode = new URLSearchParams(location.search).get("ref") || "";
   const shopQuery = "?shop=" + encodeURIComponent(shopId);
   let ready = false;
   const button = $("#submit");
@@ -34,6 +35,17 @@
       $("#existing").hidden = false;
       $("#existing").href = "/?member=" + encodeURIComponent(session.member.id);
     }
+    if (/^[a-f0-9]{32}$/.test(referralCode)) {
+      $("#referral-notice").hidden = false;
+      if (session.member) $("#referral-notice").textContent = "You already have a membership here. Referral bonuses apply to new members only.";
+      else {
+        try {
+          const response = await fetch("/api/referral" + shopQuery + "&ref=" + encodeURIComponent(referralCode));
+          const offer = await response.json();
+          $("#referral-notice").textContent = offer.valid ? "You’ve been invited! Create your own card. Your referrer earns a bonus after your first paid purchase at this shop." : "This referral offer is unavailable. You can still create your own card.";
+        } catch { $("#referral-notice").textContent = "Your card is ready to create. Referral eligibility will be checked when you join."; }
+      }
+    }
     ready = true;
     button.disabled = false;
   } catch (e) {
@@ -54,6 +66,7 @@
           name: $("#name").value,
           accept: $("#accept").checked,
           shopId,
+          referralCode,
         }),
       });
       const data = await r.json();

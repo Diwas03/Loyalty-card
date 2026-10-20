@@ -14,7 +14,7 @@ export type HostedDB = Pick<pg.Pool, "query">;
 export async function readMember(db: HostedDB, id: string) {
   return (
     await db.query(
-      "SELECT m.*,p.stamp_goal,p.name AS shop_name,p.color AS shop_color,p.card_title,p.tagline,p.reward_label,p.stamp_icon,p.card_style,p.logo_data FROM coffee.members m JOIN coffee.shops p ON p.id=m.shop_id WHERE m.id=$1",
+      "SELECT m.*,p.stamp_goal,p.name AS shop_name,p.color AS shop_color,p.card_title,p.tagline,p.reward_label,p.stamp_icon,p.card_style,p.logo_data,p.referrals_enabled,p.referral_reward_kind,p.referral_reward_amount,(SELECT count(*)::int FROM coffee.referrals r WHERE r.referrer_id=m.id) AS referred_count,(SELECT count(*)::int FROM coffee.referrals r WHERE r.referrer_id=m.id AND r.credited_at IS NOT NULL) AS credited_count FROM coffee.members m JOIN coffee.shops p ON p.id=m.shop_id WHERE m.id=$1",
       [id],
     )
   ).rows[0];
@@ -27,6 +27,14 @@ export async function goal(db: HostedDB, shopId = "default") {
 }
 export const publicMember = (m: any) => ({
   ...cardDesign(m),
+  referral: {
+    code: m.referral_code,
+    enabled: m.referrals_enabled === true,
+    rewardKind: m.referral_reward_kind || "stamps",
+    rewardAmount: m.referral_reward_amount || 1,
+    invited: m.referred_count || 0,
+    credited: m.credited_count || 0,
+  },
   id: m.id,
   name: m.name,
   stamps: m.stamps,

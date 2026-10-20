@@ -5,8 +5,8 @@ try {
   sessionStorage.removeItem("loyalty-staff-handoff");
   if (handoff && Date.now() - handoff.createdAt < 15000 && /^[a-f0-9]{64}$/.test(handoff.token)) staffSession = handoff.token;
 } catch {}
-if (!staffSession) { location.replace("/login.html"); return; }
-const endSession = () => { staffSession = undefined; location.replace("/login.html?expired=1"); };
+if (!staffSession) { location.replace("/business/login.html"); return; }
+const endSession = () => { staffSession = undefined; location.replace("/business/login.html?expired=1"); };
 let idleTimer;
 const touchSession = () => { clearTimeout(idleTimer); idleTimer = setTimeout(endSession, 15 * 60000); };
 for (const event of ["pointerdown", "keydown"]) document.addEventListener(event, touchSession, { passive: true });
@@ -41,7 +41,7 @@ async function api(url, options = {}) {
     throw Error("Unexpected server response. Please refresh and try again.");
   }
   if (r.status === 401) {
-    location.assign("/login.html");
+    location.assign("/business/login.html");
     throw Error("Sign in again");
   }
   if (!r.ok) {
@@ -57,6 +57,93 @@ function text(tag, value, className) {
   if (className) n.className = className;
   return n;
 }
+let currentTab, dashboardEnabled = false;
+const availableTabs = new Set(["customers", "scan"]);
+function showTab(key, focus = false) {
+  if (!availableTabs.has(key)) key = role === "owner" && dashboardEnabled ? "overview" : "customers";
+  if (currentTab === "scan" && key !== "scan") {
+    ++scanGeneration; controls?.stop();
+    $("#video").hidden = $("#stop").hidden = true; $("#scan").disabled = !role;
+  }
+  currentTab = key;
+  for (const button of document.querySelectorAll("[data-tab]")) {
+    const active = button.dataset.tab === key;
+    button.setAttribute("aria-selected", String(active)); button.tabIndex = active ? 0 : -1;
+    $("#panel-" + button.dataset.tab).hidden = !active;
+    if (active && focus) button.focus();
+  }
+  history.replaceState(null, "", "#" + key);
+  if (key === "overview") loadOverview().catch(error => message(error.message));
+  if (key === "referrals") loadReferrals().catch(error => message(error.message));
+}
+for (const button of document.querySelectorAll("[data-tab]")) {
+  button.onclick = () => showTab(button.dataset.tab);
+  button.onkeydown = event => {
+    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+    event.preventDefault();
+    const tabs = [...document.querySelectorAll("[data-tab]")].filter(tab => !tab.hidden);
+    const index = tabs.indexOf(button);
+    const next = event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1 : (index + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length;
+    showTab(tabs[next].dataset.tab, true);
+  };
+}
+$(".quick-scan").onclick = event => { event.preventDefault(); showTab("scan"); $("#scan").focus(); };
+window.addEventListener("hashchange", () => showTab(location.hash.slice(1)));
+const activityName = kind => kind === "purchase" ? "Paid visit · +1 stamp" : kind === "referral" ? "Referral bonus earned" : "Reward redeemed";
+let overviewLoading = false;
+async function loadOverview() {
+  if (!dashboardEnabled || overviewLoading) return;
+  overviewLoading = true;
+  $("#panel-overview").setAttribute("aria-busy", "true");
+  $("#overview-updated").textContent = "Updating your shop activity…";
+  try {
+    const result = await api("/api/staff/overview");
+    $("#shop-metrics").replaceChildren();
+    for (const [key, label, note] of [["customers", "Customers", "All memberships"], ["active_customers", "Active customers", "Paid visit in the last 30 days"], ["purchases_24h", "Paid visits", "Last 24 hours"], ["available_rewards", "Available rewards", "Earned and not yet redeemed"], ["referrals", "Referred signups", "All time"], ["credited_referrals", "Qualified referrals", "First paid visit completed"]]) {
+      const metric = text("div", "", "metric"); metric.append(text("small", label), text("strong", String(result.metrics[key] ?? 0)), text("small", note)); $("#shop-metrics").append(metric);
+    }
+    $("#shop-regulars").replaceChildren();
+    for (const customer of result.regulars) {
+      const button = text("button", "", "customer-row"); button.append(text("span", customer.name, "customer-row-name"), text("span", `${customer.purchases} paid visits · ${customer.rewards} rewards`, "customer-row-meta"));
+      button.onclick = () => { $("#member").value = customer.id; showTab("customers"); lookup().catch(error => message(error.message)); };
+      $("#shop-regulars").append(button);
+    }
+    if (!result.regulars.length) $("#shop-regulars").append(text("p", "Customers will appear here when they join."));
+    $("#shop-activity").replaceChildren();
+    for (const event of result.recent) {
+      const row = text("div", `${event.name} · ${activityName(event.kind)}`, "activity"); row.append(text("small", `${date(event.created_at)} · ${event.actor}`)); $("#shop-activity").append(row);
+    }
+    if (!result.recent.length) $("#shop-activity").append(text("p", "Your shop’s paid visits, redemptions and referral bonuses will appear here."));
+    $("#overview-updated").textContent = "Updated " + new Date(result.updatedAt).toLocaleTimeString() + " · refreshes every 30 seconds while open";
+  } finally { overviewLoading = false; $("#panel-overview").setAttribute("aria-busy", "false"); }
+}
+$("#refresh-overview").onclick = () => loadOverview().catch(error => message(error.message));
+setInterval(() => { if (!document.hidden && currentTab === "overview") loadOverview().catch(error => message(error.message)); }, 30000);
+async function loadReferrals() {
+  $("#referral-settings").inert = true;
+  try {
+  const result = await api("/api/staff/referrals");
+  $("#referrals-enabled").checked = result.settings.referrals_enabled;
+  $("#referral-kind").value = result.settings.referral_reward_kind;
+  $("#referral-amount").value = result.settings.referral_reward_amount;
+  $("#referral-activity").replaceChildren();
+  for (const referral of result.referrals) {
+    const row = text("div", `${referral.referrer} → ${referral.referred}`, "activity");
+    row.append(text("small", `${referral.reward_amount} ${referral.reward_kind === "stamps" ? "bonus stamp(s)" : "free reward(s)"} · ${referral.credited_at ? "Credited " + date(referral.credited_at) : "Awaiting first paid purchase"}`));
+    $("#referral-activity").append(row);
+  }
+  if (!result.referrals.length) $("#referral-activity").append(text("p", "No referred signups yet. Customers can share their referral link from their card."));
+  } finally { $("#referral-settings").inert = false; }
+}
+$("#referral-settings").onsubmit = async event => {
+  event.preventDefault(); const button = event.currentTarget.querySelector("button"); button.disabled = true;
+  try {
+    await api("/api/staff/referrals", { method: "POST", body: JSON.stringify({ enabled: $("#referrals-enabled").checked, rewardKind: $("#referral-kind").value, rewardAmount: Number($("#referral-amount").value) }) });
+    $("#referral-settings-message").textContent = "Saved. New referred signups will use these settings.";
+  } catch (error) { $("#referral-settings-message").textContent = error.message; }
+  finally { button.disabled = false; }
+};
+
 function date(ms) {
   return ms ? new Date(ms).toLocaleString() : "Earlier record";
 }
@@ -100,7 +187,7 @@ async function lookup() {
   for (const h of m.history) {
     const row = text(
       "div",
-      `${h.kind === "purchase" ? "Paid coffee +1 stamp" : "Reward redeemed"} · ${h.result.stamps}/${h.result.stampGoal || 8} · ${h.result.rewards} rewards`,
+      `${activityName(h.kind)} · ${h.result.stamps}/${h.result.stampGoal || 8} · ${h.result.rewards} rewards`,
       "activity",
     );
     row.append(text("small", `${date(h.created_at)} · ${h.actor}`));
@@ -170,7 +257,7 @@ $("#search").onsubmit = (e) => {
 };
 $("#lookup").onsubmit = (e) => {
   e.preventDefault();
-  lookup().catch((e) => message(e.message));
+  lookup().then(() => showTab("customers")).catch((e) => message(e.message));
 };
 $("#refresh").onclick = () => lookup().catch((e) => message(e.message));
 $("#logout").onclick = async () => {
@@ -178,7 +265,7 @@ $("#logout").onclick = async () => {
     await api("/api/logout", { method: "POST", body: "{}" });
     controls?.stop();
     staffSession = undefined;
-    location.replace("/login.html");
+    location.replace("/business/login.html");
   } catch (e) {
     message(e.message);
   }
@@ -275,6 +362,7 @@ $("#scan").onclick = async () => {
           if (generation !== scanGeneration) return;
           if (scanStamping) await recordAction("purchase", true);
           else message("Membership found. Confirm an action below.");
+          showTab("customers");
         } catch (error) {
           message(error.message);
         } finally {
@@ -367,6 +455,12 @@ window.addEventListener("pagehide", () => { controls?.stop(); staffSession = und
     const me = await api("/api/staff/me");
     role = me.role;
     scanStamping = me.scanStamping === true;
+    dashboardEnabled = me.businessDashboard === true;
+    if (role === "owner") {
+      availableTabs.add("design"); $("#tab-design").hidden = false;
+      if (me.accountsEnabled) { availableTabs.add("team"); $("#tab-team").hidden = false; }
+      if (dashboardEnabled) for (const key of ["overview", "referrals"]) { availableTabs.add(key); $("#tab-" + key).hidden = false; }
+    }
     if (me.shopId) {
       $("#customer-join-link").href = "/join.html?shop=" + encodeURIComponent(me.shopId);
       $("#shop-qr-link").href = "/shop.html?shop=" + encodeURIComponent(me.shopId);
@@ -396,6 +490,7 @@ window.addEventListener("pagehide", () => { controls?.stop(); staffSession = und
     }
     $("#identity").textContent = `${me.username} · ${me.role}`;
     await search();
+    showTab(location.hash.slice(1));
   } catch (e) {
     message(e.message);
   }

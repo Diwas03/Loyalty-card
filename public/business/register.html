@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="theme-color" content="#193d32" />
+    <link rel="apple-touch-icon" href="/icons/icon-192.png" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Create your shop owner account</title>
+    <link rel="icon" type="image/svg+xml" href="/brand.svg" />
+    <link rel="stylesheet" href="/style.css" />
+    <script src="/register.js" defer></script>
+  </head>
+  <body class="login-page register-page">
+    <a class="auth-brand" href="/business/">Loyalty Business<span>.</span></a>
+    <main id="main-content">
+    <header class="auth-header"><p class="eyebrow">BUILT FOR YOUR BUSINESS</p><h1>Good business.<br /><em>Great regulars.</em></h1><p>Create your shop. Bring your customers closer.</p></header>
+    <section class="auth-panel">
+      <h2>Create your shop</h2>
+      <p>Create an account for your shop. If your shop already has an owner, ask them to create your staff account.</p>
+      <form id="register">
+        <label>Shop name <input autocomplete="organization" placeholder="Your shop’s name" name="shopName" maxlength="80" required /></label>
+        <label>Your name <input placeholder="First and last name" name="fullName" autocomplete="name" maxlength="80" required /></label>
+        <label>Choose a username <input name="username" autocomplete="username" pattern="[A-Za-z0-9._-]{3,40}" minlength="3" maxlength="40" required /></label>
+        <label>Choose a password <input name="password" type="password" autocomplete="new-password" minlength="12" maxlength="200" required /></label>
+        <small class="field-hint">Use at least 12 characters for your password.</small>
+        <label>Confirm password <input name="confirmPassword" type="password" autocomplete="new-password" minlength="12" maxlength="200" required /></label>
+        <button>Create account</button>
+      </form>
+      <p id="message" role="status" aria-live="polite"></p>
+    </section>
+    <a href="/business/login.html">Already have an account? Sign in</a>
+    </main>
+    <footer class="auth-footer">Loyalty for the places that matter.</footer>
+  </body>
+</html>

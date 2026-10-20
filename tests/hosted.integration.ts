@@ -28,7 +28,7 @@ beforeEach(async () => {
   );
   await db.query("UPDATE coffee.programme SET stamp_goal=8");
   await db.query("DELETE FROM coffee.shops WHERE id<>'default'");
-  await db.query("UPDATE coffee.shops SET stamp_goal=8,name='Demo Coffee Shop',color='#41291d' WHERE id='default'");
+  await db.query("UPDATE coffee.shops SET referrals_enabled=true,referral_reward_kind='stamps',referral_reward_amount=1,stamp_goal=8,name='Demo Coffee Shop',color='#41291d' WHERE id='default'");
 });
 after(() => db.end());
 const enroll = async () =>
@@ -412,4 +412,81 @@ test("staff sessions never use cookies; shop design is owner-only, validated and
   assert.equal(card.stamps, 0);
   await db.query("UPDATE coffee.sessions SET expires=$1 WHERE token_hash=$2", [Date.now() - 1, (await import("../src/hosted-db.js")).digest(login.body.token)]);
   await owner.get("/api/staff/me").expect(401);
+});
+
+test("referrals credit the sponsor exactly once on a first paid visit, preserve snapshot terms and roll stamps into rewards", async () => {
+  const app = createHostedApp(db);
+  const sponsorBrowser = request.agent(app);
+  await sponsorBrowser.get("/api/customer-session").expect(200);
+  const sponsor = (await sponsorBrowser.post("/api/join").send({ name: "Referrer", accept: true }).expect(200)).body.member;
+  assert.match(sponsor.referral.code, /^[a-f0-9]{32}$/);
+  assert.notEqual(sponsor.referral.code, sponsor.id.replaceAll("-", ""));
+  const self = await sponsorBrowser.post("/api/join").send({ name: "Self", accept: true, referralCode: sponsor.referral.code }).expect(200);
+  assert.equal(self.body.member.id, sponsor.id);
+  assert.equal((await db.query("SELECT count(*)::int AS n FROM coffee.referrals")).rows[0].n, 0);
+  await db.query("UPDATE coffee.shops SET referral_reward_amount=3 WHERE id='default'");
+  await db.query("UPDATE coffee.members SET stamps=7 WHERE id=$1", [sponsor.id]);
+  const friend = request.agent(app);
+  await friend.get("/api/customer-session").expect(200);
+  const invited = (await friend.post("/api/join").send({ name: "Friend", accept: true, referralCode: sponsor.referral.code }).expect(200)).body.member;
+  await friend.post("/api/join").send({ name: "Retry", accept: true, referralCode: sponsor.referral.code }).expect(200);
+  assert.equal((await readMember(db, sponsor.id)).rewards, 0);
+  assert.equal((await db.query("SELECT count(*)::int AS n FROM coffee.referrals")).rows[0].n, 1);
+  // An owner can pause future referrals; the pending promise still qualifies for 3 stamps.
+  await db.query("UPDATE coffee.shops SET referrals_enabled=false,referral_reward_amount=1 WHERE id='default'");
+  const key = randomUUID();
+  await Promise.all([1, 2].map(() => db.query("SELECT coffee.mutate_member($1,'purchase',$2,'staff')", [invited.id, key])));
+  await db.query("SELECT coffee.mutate_member($1,'purchase',$2,'staff')", [invited.id, randomUUID()]);
+  const paid = await readMember(db, sponsor.id);
+  assert.equal(paid.stamps, 2);
+  assert.equal(paid.rewards, 1);
+  assert.equal(Number(paid.credited_count), 1);
+  assert.equal((await db.query("SELECT count(*)::int AS n FROM coffee.operations WHERE kind='referral'")).rows[0].n, 1);
+  assert.equal((await db.query("SELECT count(*)::int AS n FROM coffee.jobs WHERE member_id=$1", [sponsor.id])).rows[0].n, 1);
+  const disabledFriend = request.agent(app);
+  await disabledFriend.get("/api/customer-session").expect(200);
+  await disabledFriend.post("/api/join").send({ name: "After pause", accept: true, referralCode: sponsor.referral.code }).expect(200);
+  assert.equal((await db.query("SELECT count(*)::int AS n FROM coffee.referrals")).rows[0].n, 1);
+});
+
+test("owner dashboard and referral settings stay inside their shop; reward payouts work through QR scans", async () => {
+  const app = createHostedApp(db);
+  const a = { username: "ref-owner-a", fullName: "Owner A", shopName: "Shop A", password: "referral-owner-password" };
+  const b = { ...a, username: "ref-owner-b", shopName: "Shop B" };
+  const shopA = (await request(app).post("/api/setup/owner").send(a).expect(201)).body.shopId;
+  const shopB = (await request(app).post("/api/setup/owner").send(b).expect(201)).body.shopId;
+  const ownerA = request.agent(app).set("Authorization", "Bearer " + (await request(app).post("/api/login").send(a).expect(200)).body.token);
+  const ownerB = request.agent(app).set("Authorization", "Bearer " + (await request(app).post("/api/login").send(b).expect(200)).body.token);
+  await ownerA.post("/api/staff/referrals").send({ enabled: true, rewardKind: "rewards", rewardAmount: 2, shopId: shopB }).expect(200);
+  await ownerA.post("/api/staff/referrals").send({ enabled: true, rewardKind: "rewards", rewardAmount: 100 }).expect(400);
+  await request(app).get("/api/staff/overview").expect(401);
+  const signup = async (shopId: string, referralCode?: string) => {
+    const customer = request.agent(app); await customer.get("/api/customer-session").expect(200);
+    return (await customer.post("/api/join").send({ name: "New customer", accept: true, shopId, referralCode }).expect(200)).body.member;
+  };
+  const sponsor = await signup(shopA);
+  assert.equal((await request(app).get(`/api/referral?shop=${shopB}&ref=${sponsor.referral.code}`).expect(200)).body.valid, false);
+  const otherShop = await signup(shopB, sponsor.referral.code);
+  assert.equal((await db.query("SELECT count(*)::int AS n FROM coffee.referrals")).rows[0].n, 0);
+  const first = await signup(shopA, sponsor.referral.code);
+  await ownerB.post(`/api/staff/members/${first.id}/scan`).set("Idempotency-Key", randomUUID()).send({}).expect(404);
+  const key = randomUUID();
+  for (let i = 0; i < 2; i++) await ownerA.post(`/api/staff/members/${first.id}/scan`).set("Idempotency-Key", key).send({}).expect(200);
+  assert.equal((await readMember(db, sponsor.id)).rewards, 2);
+  assert.equal((await readMember(db, otherShop.id)).rewards, 0);
+  const overviewA = (await ownerA.get("/api/staff/overview").expect(200)).body;
+  const overviewB = (await ownerB.get("/api/staff/overview").expect(200)).body;
+  assert.equal(overviewA.metrics.customers, 2);
+  assert.equal(overviewA.metrics.purchases_24h, 1);
+  assert.equal(overviewA.metrics.available_rewards, 2);
+  assert.equal(overviewA.metrics.credited_referrals, 1);
+  assert.equal(overviewB.metrics.customers, 1);
+  assert.equal(overviewB.metrics.purchases_24h, 0);
+  assert.equal((await ownerA.get("/api/staff/referrals").expect(200)).body.referrals.length, 1);
+  assert.equal((await ownerB.get("/api/staff/referrals").expect(200)).body.referrals.length, 0);
+  await ownerA.post("/api/staff/accounts").send({ username: "ref-staff", fullName: "Staff", password: "referral-staff-password" }).expect(201);
+  const staff = request.agent(app).set("Authorization", "Bearer " + (await request(app).post("/api/login").send({ username: "ref-staff", password: "referral-staff-password" }).expect(200)).body.token);
+  await staff.get("/api/staff/overview").expect(403);
+  await staff.get("/api/staff/referrals").expect(403);
+  await staff.post("/api/staff/referrals").send({ enabled: false, rewardKind: "stamps", rewardAmount: 1 }).expect(403);
 });

@@ -201,7 +201,7 @@ export function createHostedApp(
     res.json({ ok: true, token, expiresIn: 1800 });
   });
   app.get("/api/staff/me", staff, (_req, res) =>
-    res.json({ username: res.locals.actor, role: res.locals.role, accountsEnabled: true, scanStamping: true, shopId: res.locals.shopId }),
+    res.json({ username: res.locals.actor, role: res.locals.role, accountsEnabled: true, scanStamping: true, businessDashboard: true, shopId: res.locals.shopId }),
   );
   app.post("/api/logout", staff, async (req, res) => {
     await db.query("DELETE FROM coffee.sessions WHERE token_hash=$1", [
@@ -263,6 +263,42 @@ export function createHostedApp(
     await db.query("UPDATE coffee.shops SET name=$1,color=$2,card_title=$3,tagline=$4,reward_label=$5,stamp_icon=$6,card_style=$7,logo_data=$8 WHERE id=$9", [name, req.body.color, design.cardTitle.trim(), design.tagline.trim(), design.rewardLabel.trim(), design.stampIcon, design.cardStyle, design.logoData, res.locals.shopId]);
     res.json(await shopInfo(res.locals.shopId));
   });
+  app.get("/api/referral", async (req, res) => {
+    const code = typeof req.query.ref === "string" ? req.query.ref : "";
+    if (!/^[a-f0-9]{32}$/.test(code)) { res.json({ valid: false }); return; }
+    const row = (await db.query("SELECT s.referrals_enabled,s.referral_reward_kind,s.referral_reward_amount FROM coffee.members m JOIN coffee.shops s ON s.id=m.shop_id WHERE m.referral_code=$1 AND m.shop_id=$2", [code, shopId(req.query.shop)])).rows[0];
+    res.json(row?.referrals_enabled ? { valid: true, rewardKind: row.referral_reward_kind, rewardAmount: row.referral_reward_amount } : { valid: false });
+  });
+  app.get("/api/staff/referrals", staff, async (_req, res) => {
+    if (res.locals.role !== "owner") { res.status(403).json({ error: "Owner access required" }); return; }
+    const settings = (await db.query("SELECT referrals_enabled,referral_reward_kind,referral_reward_amount FROM coffee.shops WHERE id=$1", [res.locals.shopId])).rows[0];
+    const referrals = (await db.query("SELECT a.name AS referrer,b.name AS referred,r.reward_kind,r.reward_amount,r.created_at,r.credited_at FROM coffee.referrals r JOIN coffee.members a ON a.id=r.referrer_id JOIN coffee.members b ON b.id=r.referred_id WHERE r.shop_id=$1 ORDER BY r.created_at DESC,r.referred_id LIMIT 50", [res.locals.shopId])).rows;
+    res.json({ settings, referrals });
+  });
+  app.post("/api/staff/referrals", staff, async (req, res) => {
+    if (res.locals.role !== "owner") { res.status(403).json({ error: "Owner access required" }); return; }
+    const { enabled, rewardKind, rewardAmount } = req.body;
+    if (typeof enabled !== "boolean" || !["stamps", "rewards"].includes(rewardKind) || !Number.isInteger(rewardAmount) || rewardAmount < 1 || rewardAmount > 10) {
+      res.status(400).json({ error: "Choose 1–10 bonus stamps or free rewards." }); return;
+    }
+    await db.query("UPDATE coffee.shops SET referrals_enabled=$1,referral_reward_kind=$2,referral_reward_amount=$3 WHERE id=$4", [enabled, rewardKind, rewardAmount, res.locals.shopId]);
+    res.json({ ok: true });
+  });
+  app.get("/api/staff/overview", staff, async (_req, res) => {
+    if (res.locals.role !== "owner") { res.status(403).json({ error: "Owner access required" }); return; }
+    const shop = res.locals.shopId, now = Date.now();
+    const metrics = (await db.query(`SELECT
+      (SELECT count(*)::int FROM coffee.members WHERE shop_id=$1) AS customers,
+      (SELECT count(DISTINCT o.member_id)::int FROM coffee.operations o JOIN coffee.members m ON m.id=o.member_id WHERE m.shop_id=$1 AND o.kind='purchase' AND o.created_at>=$2) AS active_customers,
+      (SELECT count(*)::int FROM coffee.operations o JOIN coffee.members m ON m.id=o.member_id WHERE m.shop_id=$1 AND o.kind='purchase' AND o.created_at>=$3) AS purchases_24h,
+      (SELECT coalesce(sum(rewards),0)::int FROM coffee.members WHERE shop_id=$1) AS available_rewards,
+      (SELECT count(*)::int FROM coffee.referrals WHERE shop_id=$1) AS referrals,
+      (SELECT count(*)::int FROM coffee.referrals WHERE shop_id=$1 AND credited_at IS NOT NULL) AS credited_referrals`, [shop, now - 30 * 86400000, now - 86400000])).rows[0];
+    const recent = (await db.query("SELECT m.id,m.name,o.kind,o.created_at,o.actor,o.result FROM coffee.operations o JOIN coffee.members m ON m.id=o.member_id WHERE m.shop_id=$1 ORDER BY o.created_at DESC,o.key LIMIT 20", [shop])).rows;
+    const regulars = (await db.query("SELECT m.id,m.name,m.stamps,m.rewards,count(o.key)::int AS purchases FROM coffee.members m LEFT JOIN coffee.operations o ON o.member_id=m.id AND o.kind='purchase' WHERE m.shop_id=$1 GROUP BY m.id ORDER BY purchases DESC,m.name,m.id LIMIT 10", [shop])).rows;
+    res.json({ metrics, recent, regulars, updatedAt: now });
+  });
+
   app.get("/api/customer-session", async (req, res) => {
     let token = req.cookies.coffee_customer;
     if (!validJoinToken(token)) {
@@ -313,10 +349,11 @@ export function createHostedApp(
         [shopToken(req.cookies.coffee_customer, shop), req.cookies.coffee_customer, shop],
       );
       const raw = (
-        await db.query("SELECT coffee.enroll_customer($1,$2,$3) AS m", [
+        await db.query("SELECT coffee.enroll_customer($1,$2,$3,$4) AS m", [
           req.body.name,
           shopToken(req.cookies.coffee_customer, shop),
           shop,
+          typeof req.body.referralCode === "string" && /^[a-f0-9]{32}$/.test(req.body.referralCode) ? req.body.referralCode : null,
         ])
       ).rows[0].m;
       const m = await readMember(db, raw.id);

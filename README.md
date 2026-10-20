@@ -177,7 +177,7 @@ balance. Wallet shortcuts are stored only on the device; they do not synchronize
 across phones. Use **Save private link** on a card to restore it elsewhere.
 **Remove shortcut** leaves the membership and database balance untouched.
 
-Owners sign in at `/login.html` and use **Programme settings → Card designer**.
+Owners sign in at `/business/login.html` and use **Card & rewards → Card designer**.
 They can publish a shop logo, color, card title, message, reward name, stamp symbol
 and classic/minimal layout. The shared renderer powers both the preview and real
 cards. Changes are scoped to the authenticated owner’s shop. Logos are resized
@@ -185,3 +185,42 @@ in the browser and restricted to raster PNG/JPEG/WebP data URLs; the server
 validates content signatures and size. The additive shop migration preserves
 existing IDs, stamps and rewards. Keep stamp goals separate from visual design:
 changing a goal still follows the existing progress-preservation rules.
+
+
+### Separate customer and business pages
+
+- Customer wallet: `/` (also the installed PWA’s start page). Customer navigation
+  contains no staff sign-in form. Each card has its own public invitation link.
+- Business portal: `/business/`, with `/business/login.html` and
+  `/business/register.html` as the account entry points.
+- Business dashboard: `/business/dashboard.html`. Owners have Overview, Customers,
+  Scan & stamp, Card & rewards, Referrals and Team tabs. Staff have Customers and
+  Scan & stamp; server authorization also protects owner-only APIs. Changing tabs
+  keeps the temporary session in memory; reloading still requires fresh sign-in.
+- Old `/login.html`, `/register.html` and `/staff.html` links redirect to the
+  business pages. The PWA service worker does not handle business navigation.
+
+Overview metrics use real shop-scoped ledger data: total customers, customers
+with a paid visit in the last 30 days, paid visits in the last 24 hours, available
+rewards, referred signups and qualified referrals. Recent activity and top regulars
+are scoped to the same authenticated shop. Counts reflect staff-recorded visits;
+this application does not process payments or calculate revenue.
+
+### Referral rewards
+
+Referrals default to one bonus stamp, and owners can pause new offers or configure
+1–10 bonus stamps or free rewards under **Referrals**. Customers use **Invite
+friends** on a card. The invitation contains an independent random code, not the
+private card identifier. A friend must create a new membership at the same shop.
+Returning members and repeated signup requests do not acquire referral attribution.
+
+A database trigger credits the referrer after the friend’s first recorded paid
+purchase (manual or QR scan), in the same transaction as the purchase. Duplicate
+requests, rescans and subsequent purchases cannot award again. Referral terms are
+captured at signup, so pending invitations keep their promised reward if settings
+change later. Stamp bonuses roll over into free rewards using the shop’s current
+stamp goal. The bonus is recorded separately in customer activity and never
+counts as a paid purchase in dashboard metrics. A shop can only see and configure
+its own referrals. The customer sees aggregate invitation progress, without friends’
+private card links or membership IDs. Existing members and balances are preserved
+by the additive `supabase/referrals.sql` migration.

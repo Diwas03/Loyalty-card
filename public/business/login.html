@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="theme-color" content="#193d32" />
+    <link rel="apple-touch-icon" href="/icons/icon-192.png" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Staff sign in</title>
+    <link rel="icon" type="image/svg+xml" href="/brand.svg" />
+    <link rel="stylesheet" href="/style.css" />
+    <script src="/login.js" defer></script>
+  </head>
+  <body class="login-page">
+    <a class="auth-brand" href="/business/">Loyalty Business<span>.</span></a>
+    <main id="main-content">
+    <header class="auth-header"><p class="eyebrow">YOUR SHOP, CONNECTED</p><h1>Welcome back.</h1><p>Sign in to manage your customers and reward every visit.</p></header>
+    <section class="auth-panel">
+      <h2>Staff sign in</h2><p class="muted">For your privacy, sign-in lasts only in this open workspace. Reloading or reopening requires sign-in again.</p>
+      <form id="login">
+        <label
+          >Username
+          <input
+            id="username"
+            autocomplete="username"
+            placeholder="Enter your username"
+            maxlength="40"
+        /></label>
+        <label
+          >Password
+          <input
+            id="password"
+            type="password"
+            autocomplete="current-password"
+            required /></label
+        ><button>Sign in <span aria-hidden="true">→</span></button>
+      </form>
+      <p id="message" role="status"></p>
+    </section>
+    <p><a href="/business/register.html">Create an account for your shop</a></p>
+    <a class="back-link" href="/">← Customer wallet</a>
+    </main>
+    <footer class="auth-footer">Loyalty for the places that matter.</footer>
+  </body>
+</html>

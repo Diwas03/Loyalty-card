@@ -25,11 +25,11 @@ try {
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
   page.on("dialog", (dialog) => dialog.accept());
-  await page.goto(origin + "/staff.html");
+  await page.goto(origin + "/business/dashboard.html");
   await page.locator("#username").fill("owner");
   await page.locator("#password").fill(password);
   await page.locator("#login button").click();
-  await page.waitForURL("**/staff.html");
+  await page.waitForURL("**/business/dashboard.html*");
   const customer = await context.newPage();
   await customer.goto(origin + "/join.html");
   await customer.locator("#name").fill("Browser Test Customer");
@@ -37,6 +37,7 @@ try {
   await customer.locator("#submit").click();
   await customer.waitForURL(url => url.searchParams.has("member"));
   const link = new URL(customer.url()).pathname + new URL(customer.url()).search;
+  await page.locator("#tab-scan").click();
   await page.locator("#member").fill(new URL(customer.url()).searchParams.get("member")!);
   await page.locator("#lookup button").click();
   await page.waitForFunction(() => document.querySelector("#customer-name")?.textContent === "Browser Test Customer");
@@ -100,6 +101,7 @@ try {
       document.querySelector("#balance")?.textContent ===
       "0 / 8 stamps · 0 available rewards",
   );
+  await page.locator("#tab-design").click();
   await page.locator("#goal").fill("10");
   await page.locator("#programme button").click();
   await page.waitForFunction(

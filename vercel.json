@@ -5,7 +5,7 @@
   "functions": {
     "api/index.ts": {
       "maxDuration": 60,
-      "includeFiles": "supabase/{schema,shops}.sql"
+      "includeFiles": "supabase/{schema,shops,referrals}.sql"
     }
   },
   "rewrites": [
@@ -41,6 +41,23 @@
           "value": "no-cache"
         }
       ]
+    }
+  ],
+  "redirects": [
+    {
+      "source": "/login.html",
+      "destination": "/business/login.html",
+      "permanent": false
+    },
+    {
+      "source": "/register.html",
+      "destination": "/business/register.html",
+      "permanent": false
+    },
+    {
+      "source": "/staff.html",
+      "destination": "/business/dashboard.html",
+      "permanent": false
     }
   ]
 }

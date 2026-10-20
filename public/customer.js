@@ -40,6 +40,17 @@
         document.title = (member.shopName || "Loyalty") + " · My card";
         $("nav a").textContent = member.shopName || "Loyalty";
         $("#terms").textContent = `One paid coffee earns one stamp. ${member.stampGoal} stamps earn ${member.rewardLabel || "a free coffee"}.`;
+        const referral = member.referral;
+        if (referral && /^[a-f0-9]{32}$/.test(referral.code)) {
+          $("#referral-section").hidden = false;
+          $("#invite-shortcut").hidden = !referral.enabled;
+          $("#referral-sharing").hidden = !referral.enabled;
+          const bonus = referral.rewardKind === "rewards" ? `${referral.rewardAmount} × ${member.rewardLabel || "free reward"}` : `${referral.rewardAmount} bonus ${referral.rewardAmount === 1 ? "stamp" : "stamps"}`;
+          $("#referral-offer").textContent = referral.enabled ? `Earn ${bonus} when a new friend joins this shop through your link and makes their first paid purchase. Bonus goes to you; your friend gets their own membership.` : "This shop has paused new referral offers. Existing qualifying invitations keep their promised reward.";
+          $("#referral-progress").textContent = `${referral.invited} joined · ${referral.credited} qualified · ${Math.max(0, referral.invited - referral.credited)} awaiting a first purchase`;
+          const link = new URL("/join.html", location.origin); link.searchParams.set("shop", member.shopId || "default"); link.searchParams.set("ref", referral.code);
+          $("#referral-link").value = link.href;
+        }
         const shortcutSaved = CardUI.saveCard(member);
         $("#home-guide").hidden = true;
         status("● Live balance · updated " + new Date().toLocaleTimeString() + (shortcutSaved ? "" : " · Could not save the shortcut. Keep your private link."), !shortcutSaved);
@@ -87,6 +98,18 @@
   document.addEventListener("visibilitychange", () => { if (!document.hidden) refresh(); });
   window.addEventListener("online", refresh);
   window.addEventListener("storage", event => { if (!id && event.key === "loyalty-cards") location.reload(); });
+  async function shareReferral(copyOnly) {
+    const url = $("#referral-link").value;
+    if (!url) return;
+    try {
+      if (!copyOnly && navigator.share) await navigator.share({ title: "Join me at this shop", text: "Create your own loyalty card. Your first paid visit helps me earn a referral bonus.", url });
+      else { await navigator.clipboard.writeText(url); $("#referral-message").textContent = "Invitation copied. Send it to a friend."; }
+    } catch (error) {
+      if (error.name !== "AbortError") { $("#referral-link").focus(); $("#referral-link").select(); $("#referral-message").textContent = "Select and copy your invitation link above."; }
+    }
+  }
+  $("#share-referral").onclick = () => shareReferral(false);
+  $("#copy-referral").onclick = () => shareReferral(true);
   const dialog = $("#add-card-dialog");
   let camera;
   const stopCamera = () => { camera?.stop(); camera = undefined; $("#join-camera").hidden = true; $("#scan-shop").disabled = false; };

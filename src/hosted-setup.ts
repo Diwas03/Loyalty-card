@@ -4,6 +4,7 @@ import type { HostedDB } from "./hosted-db.js";
 export async function installHosted(db: HostedDB) {
   await db.query(readFileSync("supabase/schema.sql", "utf8"));
   await db.query(readFileSync("supabase/shops.sql", "utf8"));
+  await db.query(readFileSync("supabase/referrals.sql", "utf8"));
   await protectLegacyTables(db);
 }
 export async function hostedStatus(db: HostedDB) {

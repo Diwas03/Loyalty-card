@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="theme-color" content="#193d32" />
+    <link rel="apple-touch-icon" href="/icons/icon-192.png" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Loyalty Business · Dashboard</title>
+    <link rel="icon" type="image/svg+xml" href="/brand.svg" />
+    <link rel="stylesheet" href="/style.css" />
+    <script src="/vendor/zxing/zxing-browser.min.js" defer></script>
+    <script src="/card-ui.js" defer></script>
+    <script src="/staff.js" defer></script>
+  </head>
+  <body class="staff-page">
+    <a class="skip-link" href="#main-content">Skip to content</a>
+    <nav aria-label="Main navigation">
+      <a href="/business/">Loyalty Business</a
+      ><a id="shop-qr-link" href="/shop.html" target="_blank" rel="noopener">Print shop QR</a
+      ><span id="identity"></span
+      ><button id="logout" class="secondary">Sign out</button>
+    </nav>
+    <main id="main-content">
+    <header>
+      <p class="eyebrow">BUSINESS WORKSPACE</p>
+      <h1>Your shop, <em>in focus.</em></h1>
+      <p>Find your regulars, scan a card, and make their next visit count.</p>
+      <a class="button quick-scan" href="#scan">Scan a customer card <span aria-hidden="true">↗</span></a>
+    </header>
+    <div id="message" role="status" aria-live="polite"></div>
+<div class="business-tabs" role="tablist" aria-label="Workspace sections"><button type="button" role="tab" id="tab-overview" aria-controls="panel-overview" aria-selected="false" tabindex="-1" data-tab="overview" hidden>Overview</button><button type="button" role="tab" id="tab-customers" aria-controls="panel-customers" aria-selected="false" tabindex="-1" data-tab="customers">Customers</button><button type="button" role="tab" id="tab-scan" aria-controls="panel-scan" aria-selected="false" tabindex="-1" data-tab="scan">Scan & stamp</button><button type="button" role="tab" id="tab-design" aria-controls="panel-design" aria-selected="false" tabindex="-1" data-tab="design" hidden>Card & rewards</button><button type="button" role="tab" id="tab-referrals" aria-controls="panel-referrals" aria-selected="false" tabindex="-1" data-tab="referrals" hidden>Referrals</button><button type="button" role="tab" id="tab-team" aria-controls="panel-team" aria-selected="false" tabindex="-1" data-tab="team" hidden>Team</button></div><div id="panel-overview" class="dashboard-panel" role="tabpanel" aria-labelledby="tab-overview" hidden><div class="panel-heading"><div><p class="eyebrow">YOUR SHOP AT A GLANCE</p><h2>Business overview</h2><p id="overview-updated" class="muted">Loading your latest activity…</p></div><button id="refresh-overview" class="secondary">Refresh overview</button></div><div id="shop-metrics" class="metrics-grid"></div><div class="workspace"><section><h2>Your regulars</h2><p class="muted">Customers ranked by recorded paid visits.</p><div id="shop-regulars"></div></section><section><h2>Latest shop activity</h2><div id="shop-activity"></div></section></div></div><div id="panel-customers" class="dashboard-panel" role="tabpanel" aria-labelledby="tab-customers" hidden><div class="workspace"><div>        <section id="customer-search">
+          <p class="eyebrow">YOUR COMMUNITY</p>
+          <h2>Your customers</h2>
+          <form id="search">
+            <label for="query">Name or membership ID</label>
+            <div class="row">
+              <input
+                id="query"
+                maxlength="80"
+                placeholder="Search customers"
+              /><button>Search</button>
+            </div>
+          </form>
+          <div id="customers" class="customer-list"></div>
+        </section>
+        <section class="customer-invite">
+          <h2>Let customers join</h2><p>Customers create their own card by scanning your shop’s QR code.</p><a id="customer-join-link" href="/join.html" class="button secondary" target="_blank" rel="noopener">Open signup page ↗</a>
+        </section>
+</div><div>        <section>
+          <p class="eyebrow">CUSTOMER OVERVIEW</p>
+          <h2 id="customer-name">Ready when you are</h2>
+          <div id="balance" class="balance">Search for a customer or scan their card to get started.</div>
+          <a id="customer-link" hidden target="_blank" rel="noopener"
+            >Open private customer card ↗</a
+          >
+          <div class="actions">
+            <button id="purchase" disabled>Record one paid coffee</button
+            ><button id="redeem" class="secondary" disabled>
+              Redeem one reward
+            </button>
+          </div>
+          <small
+            >Each paid coffee earns a stamp. Redeeming a reward earns no
+            stamp.</small
+          >
+        </section>
+        <section>
+          <h2>Recent activity</h2>
+          <div id="history">Choose a customer to see activity.</div>
+        </section>
+        <details class="delivery-panel">
+          <summary>Delivery diagnostics</summary>
+          <p class="muted">
+            Review delivery tasks for previously issued wallet passes. Web cards refresh automatically when open.
+          </p>
+          <div id="delivery">No membership selected.</div>
+          <button id="refresh" class="secondary">Refresh customer</button>
+        </details>
+</div></div></div><div id="panel-scan" class="dashboard-panel narrow-panel" role="tabpanel" aria-labelledby="tab-scan" hidden>        <section id="scan-panel">
+          <h2>Scan a card</h2>
+          <p id="scan-help">Scan a customer card to look up their membership.</p>
+          <button id="scan" disabled>Start camera</button
+          ><button id="stop" class="secondary" hidden>Stop camera</button
+          ><video id="video" muted playsinline hidden></video>
+          <form id="lookup">
+            <label for="member">Or paste a membership ID</label>
+            <div class="row">
+              <input id="member" required placeholder="Membership ID" /><button>
+                Look up
+              </button>
+            </div>
+          </form>
+        </section>
+</div><div id="panel-design" class="dashboard-panel narrow-panel" role="tabpanel" aria-labelledby="tab-design" hidden>        <section id="programme-section" hidden>
+          <h2>Programme settings</h2>
+          <form id="shop-branding" hidden>
+            <h3>Card designer</h3><p class="muted">Make it yours. Preview changes before publishing them to every customer’s card.</p>
+            <label>Shop name <input id="shop-name" maxlength="80" required /></label>
+            <label>Card title <input id="card-title" maxlength="80" required /></label>
+            <label>Card message <input id="card-tagline" maxlength="120" /></label>
+            <label>Reward name <input id="reward-label" maxlength="80" required placeholder="Free coffee" /></label>
+            <div class="design-row"><label>Card color <input id="shop-color" type="color" value="#193d32" required /></label><label>Stamp symbol <select id="stamp-icon"><option value="check">Checkmark ✓</option><option value="coffee">Coffee ☕</option><option value="star">Star ★</option><option value="heart">Heart ♥</option></select></label></div>
+            <label>Card design <select id="card-style"><option value="classic">Classic · soft circular pattern</option><option value="minimal">Minimal · solid color</option></select></label>
+            <label>Shop logo <input id="shop-logo" type="file" accept="image/png,image/jpeg,image/webp" /></label><small>PNG, JPEG or WebP. Images are resized for your card. Maximum original file size: 5 MB.</small><button type="button" id="remove-logo" class="secondary">Remove logo</button>
+            <p class="eyebrow preview-heading">LIVE PREVIEW · SAMPLE BALANCE</p><div id="card-preview" aria-label="Card design preview"></div>
+            <button id="save-design">Publish card design</button><p id="design-message" role="status" aria-live="polite"></p>
+          </form>
+          <form id="programme">
+            <label for="goal">Stamps per free coffee (2–100)</label>
+            <div class="row">
+              <input
+                id="goal"
+                type="number"
+                min="2"
+                max="100"
+                required
+              /><button>Update goal</button>
+            </div>
+            <small
+              >Existing stamps and rewards are retained. The new goal appears on customer cards automatically.</small
+            >
+          </form>
+        </section>
+</div><div id="panel-referrals" class="dashboard-panel" role="tabpanel" aria-labelledby="tab-referrals" hidden><div class="workspace"><section><h2>Turn regulars into advocates</h2><p>Reward a customer when a new friend joins through their link and makes their first paid purchase.</p><form id="referral-settings"><label><input id="referrals-enabled" type="checkbox" class="inline-check" /> Enable referral rewards</label><label>Reward type<select id="referral-kind"><option value="stamps">Bonus stamps</option><option value="rewards">Free rewards</option></select></label><label>Amount per qualified referral<input id="referral-amount" type="number" min="1" max="10" required value="1" /></label><small>Changes apply to new referred signups. Pending referrals keep the reward promised when the friend joined. Bonus stamps roll over into rewards as usual. Only the referrer earns the bonus.</small><button>Save referral programme</button></form><p id="referral-settings-message" role="status"></p></section><section><h2>Referral activity</h2><p class="muted">Pending until the friend’s first paid purchase. The latest 50 referrals are shown.</p><div id="referral-activity"></div></section></div></div><div id="panel-team" class="dashboard-panel narrow-panel" role="tabpanel" aria-labelledby="tab-team" hidden>        <section id="accounts-section" hidden>
+          <h2>Create a staff account</h2>
+          <p>Each staff member signs in with their own username and password.</p>
+          <form id="staff-account">
+            <label>Staff member’s name <input name="fullName" maxlength="80" required /></label>
+            <label>Username <input name="username" autocomplete="off" pattern="[A-Za-z0-9._-]{3,40}" minlength="3" maxlength="40" required /></label>
+            <label>Password <input name="password" type="password" autocomplete="new-password" minlength="12" maxlength="200" required /></label>
+            <button>Create staff account</button>
+          </form>
+          <p id="account-message" role="status" aria-live="polite"></p>
+        </section>
+</div>
+    </main>
+    <footer class="site-footer"><span>Loyalty<span class="footer-dot">.</span></span><span>Small moments. Lasting rewards.</span></footer>
+  </body>
+</html>

@@ -18,7 +18,7 @@ In a **second terminal**, create or reset your staff owner:
 npm run local:staff -- owner owner
 ```
 
-Enter your chosen password when prompted; input is hidden. Open `http://localhost:3000/staff.html` and sign in with username `owner`. The customer enrollment page is `http://localhost:3000/join.html`.
+Enter your chosen password when prompted; input is hidden. Open `http://localhost:3000/business/login.html` and sign in with username `owner`. The customer enrollment page is `http://localhost:3000/join.html`.
 
 Keep the first terminal open. Ctrl+C stops app/worker but leaves Postgres running. `npm run local:stop` stops Postgres without deleting its volume. `npm run local` restarts it later with the same memberships and balances. Preserve both the Docker volume and `data/local-runtime.json`; neither belongs in Git. Losing the credential file does not justify deleting the database. The runner refuses to replace an existing volume whose credential file is missing.
 

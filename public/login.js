@@ -25,7 +25,7 @@ document.querySelector("#login").onsubmit = async (e) => {
     if (!r.ok) throw Error(j.error);
     sessionStorage.setItem("loyalty-staff-handoff", JSON.stringify({ token: j.token, createdAt: Date.now() }));
     document.querySelector("#password").value = "";
-    location.assign("/staff.html");
+    location.assign("/business/dashboard.html");
   } catch (e) {
     document.querySelector("#message").dataset.tone = "error";
     document.querySelector("#message").textContent = e.message;
