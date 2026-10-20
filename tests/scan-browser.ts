@@ -57,6 +57,10 @@ try {
       test.scanTestFrame();
     }, scanId);
   };
+  assert.equal(await page.locator("#purchase").count(), 0);
+  await scan("https://example.com/not-a-customer-card");
+  await page.getByText("Invalid QR code. Please show a valid customer membership QR for Demo Coffee Shop.", { exact: true }).first().waitFor();
+  assert.equal(Number((await db.query("SELECT stamps FROM coffee.members WHERE id=$1", [member.id])).rows[0].stamps), 0);
   await scan();
   await page.waitForFunction(() => document.querySelector("#message")?.textContent?.startsWith("One stamp added"));
   assert.equal(Number((await db.query("SELECT stamps FROM coffee.members WHERE id=$1", [member.id])).rows[0].stamps), 1);
@@ -91,6 +95,9 @@ try {
   await page.locator("#password").fill("browser-owner-password");
   await page.locator("#login button").click();
   await page.waitForURL("**/business/dashboard.html*");
+  await scan(member.id);
+  await page.getByText("Invalid QR code. Please show a valid customer membership QR for Browser Roasters.", { exact: true }).first().waitFor();
+  assert.equal(Number((await db.query("SELECT stamps FROM coffee.members WHERE id=$1", [member.id])).rows[0].stamps), 2);
   await page.locator("#tab-design").click();
   await page.locator("#shop-branding").waitFor({ state: "visible" });
   const me = await (await page.request.get(origin + "/api/staff/me", { headers: { Authorization: "Bearer " + lastLoginToken! } })).json();
@@ -170,7 +177,7 @@ try {
   await customer.close();
   assert.equal(dialogs, 0);
   assert.deepEqual(errors, []);
-  console.log("Browser flows passed: scanning and retry safety, temporary staff sessions, owner card design with logo, referral sharing/first-purchase rewards, dashboard monitoring, and a two-shop customer wallet. No confirmation dialog or browser exceptions.");
+  console.log("Browser flows passed: invalid/wrong-shop QR rejection, scan-only stamping and retry safety, temporary staff sessions, owner card design with logo, referral sharing/first-purchase rewards, dashboard monitoring, and a two-shop customer wallet. No confirmation dialog or browser exceptions.");
 } finally {
   await browser?.close();
   await new Promise<void>(resolve => server.close(() => resolve()));

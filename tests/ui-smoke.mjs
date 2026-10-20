@@ -70,7 +70,7 @@ try {
   await page.goto(base + '/business/dashboard.html#customers');
   await page.locator('#customers .customer-row').first().click();
   await page.waitForFunction(() => document.querySelector('#customer-name').textContent === 'Alex Morgan');
-  assert.equal(await page.locator('#purchase').isEnabled(), true);
+  assert.equal(await page.locator('#purchase').count(), 0);
   assert.equal(await page.locator('#redeem').isEnabled(), true);
   assert.equal(await page.locator('details.delivery-panel').getAttribute('open'), null);
   assert.deepEqual(errors, []);

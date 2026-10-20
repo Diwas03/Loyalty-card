@@ -85,11 +85,11 @@ test("unauthorized staff actions, unconfirmed actions and cross-origin login are
     .post(`/api/staff/members/${m.id}/purchase`)
     .set("Idempotency-Key", randomUUID())
     .send({ confirm: false })
-    .expect(400);
+    .expect(410);
   const key = randomUUID();
   for (let n = 0; n < 2; n++)
     await agent
-      .post(`/api/staff/members/${m.id}/purchase`)
+      .post(`/api/staff/members/${m.id}/scan`)
       .set("Idempotency-Key", key)
       .send({ confirm: true })
       .expect(200);

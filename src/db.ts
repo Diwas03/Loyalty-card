@@ -57,6 +57,7 @@ export async function migrate(db: DB): Promise<void> {
         error TEXT,
         UNIQUE (member_id, provider, version)
       );
+      CREATE TABLE IF NOT EXISTS scan_requests (key TEXT PRIMARY KEY,member_id TEXT NOT NULL,result TEXT NOT NULL,created_at BIGINT NOT NULL,awarded BOOLEAN NOT NULL);
       CREATE INDEX IF NOT EXISTS jobs_ready ON jobs (status, next_at);
       CREATE TABLE IF NOT EXISTS registrations (
         device TEXT NOT NULL,
@@ -139,6 +140,7 @@ export async function transact(
   kind: string,
   key: string,
   actor = "legacy",
+  scan = false,
 ) {
   if (!["purchase", "redeem"].includes(kind))
     throw new Error("Unsupported loyalty action");
@@ -148,6 +150,13 @@ export async function transact(
     await client.query("BEGIN");
     await client.query("SELECT pg_advisory_xact_lock(7342102)");
 
+    if (scan) {
+      const prior = (await client.query("SELECT member_id,result FROM scan_requests WHERE key=$1", [key])).rows[0];
+      if (prior) {
+        if (prior.member_id !== id) throw Error("Idempotency key already used for another action");
+        await client.query("COMMIT"); return JSON.parse(prior.result);
+      }
+    }
     const { rows: existing } = await client.query(
       "SELECT * FROM operations WHERE key = $1",
       [key],
@@ -157,7 +166,8 @@ export async function transact(
       if (old.member_id !== id || old.kind !== kind)
         throw new Error("Idempotency key already used for another action");
       await client.query("COMMIT");
-      return JSON.parse(old.result as string);
+      const result = JSON.parse(old.result as string);
+      return scan ? { ...result, awarded: true } : result;
     }
 
     const { rows: mRows } = await client.query<Member>(
@@ -170,6 +180,11 @@ export async function transact(
       throw new Error("No reward available");
 
     const goal = m.stamp_goal || 8;
+    if (scan && (await client.query("SELECT 1 FROM operations WHERE member_id=$1 AND kind='purchase' AND created_at>$2 LIMIT 1", [id, Date.now() - 5000])).rowCount) {
+      const result = { id, stamps: m.stamps, rewards: m.rewards, version: m.version, stampGoal: goal, awarded: false };
+      await client.query("INSERT INTO scan_requests VALUES($1,$2,$3,$4,false)", [key, id, JSON.stringify(result), Date.now()]);
+      await client.query("COMMIT"); return result;
+    }
     const stamps = kind === "purchase" ? (m.stamps + 1) % goal : m.stamps;
     const rewards =
       kind === "purchase"
@@ -197,7 +212,8 @@ export async function transact(
       );
     }
 
-    const result = { id, stamps, rewards, version, stampGoal: goal };
+    const result = { id, stamps, rewards, version, stampGoal: goal, ...(scan ? { awarded: true } : {}) };
+    if (scan) await client.query("INSERT INTO scan_requests VALUES($1,$2,$3,$4,true)", [key, id, JSON.stringify(result), Date.now()]);
     await client.query(
       "INSERT INTO operations (key, member_id, kind, result, actor, created_at) VALUES ($1, $2, $3, $4, $5, $6)",
       [key, id, kind, JSON.stringify(result), actor, Date.now()],

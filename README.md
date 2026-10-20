@@ -215,7 +215,7 @@ private card identifier. A friend must create a new membership at the same shop.
 Returning members and repeated signup requests do not acquire referral attribution.
 
 A database trigger credits the referrer after the friend’s first recorded paid
-purchase (manual or QR scan), in the same transaction as the purchase. Duplicate
+purchase (QR scan), in the same transaction as the purchase. Duplicate
 requests, rescans and subsequent purchases cannot award again. Referral terms are
 captured at signup, so pending invitations keep their promised reward if settings
 change later. Stamp bonuses roll over into free rewards using the shop’s current
@@ -224,3 +224,17 @@ counts as a paid purchase in dashboard metrics. A shop can only see and configur
 its own referrals. The customer sees aggregate invitation progress, without friends’
 private card links or membership IDs. Existing members and balances are preserved
 by the additive `supabase/referrals.sql` migration.
+
+
+### Scan-only stamping
+
+Stamp awards are available only through **Scan & stamp → Start QR scanner**.
+There is no manual award button, and authenticated `/purchase` requests return
+410. Read-only customer searches and membership-ID lookups never award stamps.
+The scanner accepts only customer membership QRs belonging to the signed-in
+shop. Unrelated QRs, signup QRs, unknown memberships and other shops’ cards show
+**Invalid QR code. Please show a valid customer membership QR for [shop].**
+without changing a balance. A successful scan automatically adds one stamp;
+repeated frames and retries remain idempotent, and repeat scans within five
+seconds do not add another stamp. Reward redemption stays a separate confirmed
+action. Local and hosted servers both support automatic scan stamping.

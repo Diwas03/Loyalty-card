@@ -386,7 +386,7 @@ export function createApp(db: DB) {
   });
 
   app.get("/api/staff/me", staff, (_req, res) =>
-    res.json({ username: res.locals.actor, role: res.locals.role }),
+    res.json({ username: res.locals.actor, role: res.locals.role, scanStamping: true }),
   );
 
   app.get("/api/staff/members", staff, async (req, res, next) => {
@@ -463,11 +463,21 @@ export function createApp(db: DB) {
     }
   });
 
+  app.post("/api/staff/members/:id/scan", staff, async (req, res, next) => {
+    const id = String(req.params.id), key = req.get("Idempotency-Key");
+    if (!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(id) || !(await member(db, id))) {
+      res.status(404).json({ error: "Invalid QR code. Please show a valid customer membership QR for this shop." }); return;
+    }
+    if (!key || !/^[a-zA-Z0-9-]{16,100}$/.test(key)) { res.status(400).json({ error: "A valid scan request key is required" }); return; }
+    try { res.json(await transact(db, id, "purchase", key, res.locals.actor, true)); }
+    catch (error) { res.status(409).json({ error: (error as Error).message }); }
+  });
   app.post("/api/staff/members/:id/:action", staff, async (req, res, next) => {
     try {
       const id = String(req.params.id),
         action = String(req.params.action);
-      if (!["purchase", "redeem"].includes(action)) {
+      if (action === "purchase") { res.status(410).json({ error: "Manual stamping has been removed. Scan the customer’s QR code to award a stamp." }); return; }
+      if (action !== "redeem") {
         res.sendStatus(404);
         return;
       }

@@ -25,6 +25,7 @@ try {
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
   page.on("dialog", (dialog) => dialog.accept());
+  await page.route("**/vendor/zxing/zxing-browser.min.js", route => route.fulfill({ contentType: "text/javascript", body: `window.ZXingBrowser={BrowserQRCodeReader:class {async decodeFromVideoDevice(id,video,callback){const controls={stop(){}};window.scanTestFrame=(id)=>callback({getText:()=>id},null,controls);return controls;}}};` }));
   await page.goto(origin + "/business/dashboard.html");
   await page.locator("#username").fill("owner");
   await page.locator("#password").fill(password);
@@ -41,21 +42,27 @@ try {
   await page.locator("#member").fill(new URL(customer.url()).searchParams.get("member")!);
   await page.locator("#lookup button").click();
   await page.waitForFunction(() => document.querySelector("#customer-name")?.textContent === "Browser Test Customer");
+  const scan = async () => {
+    await page.locator("#tab-scan").click();
+    await page.locator("#scan").click();
+    await page.evaluate(id => (window as any).scanTestFrame(id), new URL(customer.url()).searchParams.get("member"));
+  };
+  assert.equal(await page.locator("#purchase").count(), 0);
   let loseOnce = true;
-  await page.route("**/api/staff/members/*/purchase", async (route) => {
+  await page.route("**/api/staff/members/*/scan", async (route) => {
     if (loseOnce) {
       loseOnce = false;
       await route.fetch();
       await route.abort("failed");
     } else await route.continue();
   });
-  await page.locator("#purchase").click();
+  await scan();
   await page.waitForFunction(() =>
     document
       .querySelector("#message")
       ?.textContent?.includes("request key is retained"),
   );
-  await page.locator("#purchase").click();
+  await scan();
   await page.waitForFunction(() =>
     document.querySelector("#balance")?.textContent?.startsWith("1 / 8"),
   );
@@ -67,7 +74,8 @@ try {
       document.querySelector("#card-progress")?.textContent === "1 / 8 stamps",
   );
   for (let i = 2; i <= 8; i++) {
-    await page.locator("#purchase").click();
+    await db.query("UPDATE operations SET created_at=created_at-6000 WHERE kind='purchase'");
+    await scan();
     await page.waitForFunction(
       (expected) =>
         document.querySelector("#balance")?.textContent?.startsWith(expected),

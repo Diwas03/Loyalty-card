@@ -103,7 +103,7 @@ test("hosted enrollment retries, distinct browsers, named staff authorization an
   await staff.post("/api/staff/programme").send({ stampGoal: 10 }).expect(403);
   for (let i = 0; i < 2; i++)
     await staff
-      .post("/api/staff/members/" + first.member.id + "/purchase")
+      .post("/api/staff/members/" + first.member.id + "/scan")
       .set("Idempotency-Key", "hosted-purchase-request-key")
       .send({ confirm: true })
       .expect(200);
@@ -310,6 +310,7 @@ test("authenticated QR scanning awards one stamp, deduplicates frames and retrie
   await db.query("INSERT INTO coffee.staff_accounts VALUES($1,$2,$3,true)", ["scanner", passwordHash("scanner-test-password"), "staff"]);
   const staff = request.agent(app);
   await staff.post("/api/login").send({ username: "scanner", password: "scanner-test-password" }).expect(200).then(response => { staff.set("Authorization", "Bearer " + response.body.token); });
+  await staff.post(`/api/staff/members/${m.id}/purchase`).set("Idempotency-Key", randomUUID()).send({ confirm: true }).expect(410);
   await staff.post(url).send({}).expect(400);
   await staff.post(url).set("Origin", "https://wrong.example").set("Idempotency-Key", randomUUID()).send({}).expect(403);
   const keys = [randomUUID(), randomUUID()];

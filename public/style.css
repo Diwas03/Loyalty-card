@@ -346,3 +346,5 @@ dialog > p { font-size: 13px; color: var(--muted); }
 .member-tools { flex-wrap: wrap; }
 #referral-section { scroll-margin-top: 20px; }
 @media(max-width:640px) { .staff-page header { display: block; } .staff-page header h1 { font-size: 34px; margin: 12px 0; } .staff-page header .quick-scan { margin-top: 18px; } }
+#scan-feedback { padding: 14px 16px; border-radius: 11px; font-size: 13px; background: #eaf0e5; color: var(--green); border: 1px solid #dbe5d2; }
+#scan-feedback[data-tone=error] { background: #fff1ed; color: #943b28; border-color: #efd4cb; }

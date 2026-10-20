@@ -427,7 +427,7 @@ export function createHostedApp(
   app.post("/api/staff/members/:id/scan", staff, async (req, res, next) => {
     const id = String(req.params.id), key = req.get("Idempotency-Key");
     const member = await readMember(db, id);
-    if (!member || member.shop_id !== res.locals.shopId) { res.status(404).json({ error: "Membership not found" }); return; }
+    if (!member || member.shop_id !== res.locals.shopId) { res.status(404).json({ error: "Invalid QR code. Please show a valid customer membership QR for this shop." }); return; }
     if (!key || !/^[a-zA-Z0-9-]{16,100}$/.test(key)) {
       res.status(400).json({ error: "A valid scan request key is required" });
       return;
@@ -453,6 +453,7 @@ export function createHostedApp(
       key = req.get("Idempotency-Key");
     const member = await readMember(db, id);
     if (!member || member.shop_id !== res.locals.shopId) { res.status(404).json({ error: "Membership not found" }); return; }
+    if (action === "purchase") { res.status(410).json({ error: "Manual stamping has been removed. Scan the customer’s QR code to award a stamp." }); return; }
     if (
       !["purchase", "redeem"].includes(action) ||
       !key ||

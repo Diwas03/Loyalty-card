@@ -47,7 +47,7 @@ test("named staff enrollment, owner-only settings/retries, audit history, legacy
   const key = randomUUID();
   for (let i = 0; i < 2; i++)
     await staff
-      .post(`/api/staff/members/${id}/purchase`)
+      .post(`/api/staff/members/${id}/scan`)
       .set("Idempotency-Key", key)
       .send({ confirm: true })
       .expect(200);

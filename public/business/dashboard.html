@@ -54,14 +54,12 @@
             >Open private customer card ↗</a
           >
           <div class="actions">
-            <button id="purchase" disabled>Record one paid coffee</button
-            ><button id="redeem" class="secondary" disabled>
+            <button id="redeem" class="secondary" disabled>
               Redeem one reward
             </button>
           </div>
           <small
-            >Each paid coffee earns a stamp. Redeeming a reward earns no
-            stamp.</small
+            >Scan this shop’s customer QR to award one stamp automatically. Looking up a customer adds no stamps. Redeeming a reward earns no stamp.</small
           >
         </section>
         <section>
@@ -78,12 +76,13 @@
         </details>
 </div></div></div><div id="panel-scan" class="dashboard-panel narrow-panel" role="tabpanel" aria-labelledby="tab-scan" hidden>        <section id="scan-panel">
           <h2>Scan a card</h2>
-          <p id="scan-help">Scan a customer card to look up their membership.</p>
+          <p id="scan-help">Scan this shop’s customer card to award one stamp automatically.</p>
+          <p id="scan-feedback" aria-live="off" hidden></p>
           <button id="scan" disabled>Start camera</button
           ><button id="stop" class="secondary" hidden>Stop camera</button
           ><video id="video" muted playsinline hidden></video>
           <form id="lookup">
-            <label for="member">Or paste a membership ID</label>
+            <label for="member">Read-only lookup · membership ID</label>
             <div class="row">
               <input id="member" required placeholder="Membership ID" /><button>
                 Look up
