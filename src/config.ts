@@ -51,6 +51,8 @@ export function readiness() {
         !process.env.GOOGLE_SERVICE_ACCOUNT_JSON,
     ),
   );
+  if (!/^\d+$/.test(process.env.GOOGLE_ISSUER_ID || "") && !googleMissing.includes("GOOGLE_ISSUER_ID"))
+    googleMissing.push("GOOGLE_ISSUER_ID");
   if (!googleMissing.includes("GOOGLE_SERVICE_ACCOUNT_FILE")) {
     try {
       const account = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON || readFileSync(process.env.GOOGLE_SERVICE_ACCOUNT_FILE!, "utf8"));

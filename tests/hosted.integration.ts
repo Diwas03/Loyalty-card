@@ -124,7 +124,7 @@ test("hosted wallet failure preserves committed purchase; retry succeeds and cla
     randomUUID(),
     "staff",
   ]);
-  process.env.GOOGLE_ISSUER_ID = "test";
+  process.env.GOOGLE_ISSUER_ID = "123456";
   process.env.GOOGLE_SERVICE_ACCOUNT_JSON = JSON.stringify({
     client_email: "test@example.com",
     private_key: generateKeyPairSync("rsa", { modulusLength: 2048, privateKeyEncoding: { type: "pkcs8", format: "pem" }, publicKeyEncoding: { type: "spki", format: "pem" } }).privateKey,

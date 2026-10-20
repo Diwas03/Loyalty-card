@@ -24,7 +24,8 @@
     "local": "node scripts/local.mjs",
     "local:staff": "node scripts/local.mjs staff",
     "local:stop": "node scripts/local.mjs stop",
-    "test:scanner": "node scripts/run-tests.mjs scanner"
+    "test:scanner": "node scripts/run-tests.mjs scanner",
+    "wallet:check": "node scripts/check-google-wallet.mjs"
   },
   "dependencies": {
     "@vercel/functions": "^3.10.1",

@@ -2,7 +2,19 @@ import { Client } from "pg";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { databaseOptions, databaseUrl } from "../src/database-config.js";
-import { publicBaseUrl } from "../src/config.js";
+import { publicBaseUrl, readiness } from "../src/config.js";
+test("Google Pay merchant IDs cannot enable Google Wallet issuance", () => {
+  const previous = process.env.GOOGLE_ISSUER_ID;
+  try {
+    process.env.GOOGLE_ISSUER_ID = "BCR2DN6DZLTNRS3B";
+    const status = readiness().google;
+    assert.equal(status.enabled, false);
+    assert.ok(status.missing.includes("GOOGLE_ISSUER_ID"));
+  } finally {
+    if (previous === undefined) delete process.env.GOOGLE_ISSUER_ID;
+    else process.env.GOOGLE_ISSUER_ID = previous;
+  }
+});
 import { verifyPassword } from "../src/auth.js";
 import { startupFailure } from "../src/hosted-runtime.js";
 test("startup diagnostics categorize database failures without exposing driver messages", () => {
