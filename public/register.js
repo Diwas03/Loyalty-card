@@ -13,7 +13,7 @@ document.querySelector("#register").onsubmit = async (event) => {
     const response = await fetch("/api/setup/owner", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ fullName: data.fullName, username: data.username, password: data.password, setupPassword: data.setupPassword }),
+      body: JSON.stringify({ fullName: data.fullName, username: data.username, password: data.password }),
     });
     const result = await response.json();
     if (!response.ok) throw Error(result.error || "Could not create the account. Please try again.");

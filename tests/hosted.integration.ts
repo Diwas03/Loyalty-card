@@ -253,13 +253,12 @@ test("cold-start initialization creates a missing schema and preserves existing 
 test("owner registers a chosen account, then creates staff who can log in but cannot create accounts", async () => {
   delete process.env.PUBLIC_BASE_URL;
   const previous = process.env.STAFF_PASSWORD_HASH;
-  const setupPassword = "test-shop-setup-password";
   const ownerPassword = "test-chosen-owner-password";
-  process.env.STAFF_PASSWORD_HASH = passwordHash(setupPassword);
+  delete process.env.STAFF_PASSWORD_HASH;
   try {
     const app = createHostedApp(db);
-    const data = { username: "My.Owner", fullName: "Shop Owner", password: ownerPassword, setupPassword };
-    await request(app).post("/api/setup/owner").send({ ...data, setupPassword: "wrong" }).expect(403);
+    const data = { username: "My.Owner", fullName: "Shop Owner", password: ownerPassword };
+    await request(app).post("/api/setup/owner").send({ ...data, password: "short" }).expect(400);
     await request(app).post("/api/setup/owner").set("Origin", "https://wrong.example").send(data).expect(403);
     await request(app).post("/api/setup/owner").send(data).expect(201, { username: "my.owner", fullName: "Shop Owner", role: "owner" });
     await request(app).post("/api/setup/owner").send({ ...data, username: "another-owner" }).expect(409);
@@ -287,10 +286,10 @@ test("owner registers a chosen account, then creates staff who can log in but ca
 test("simultaneous first-owner registration permits exactly one account", async () => {
   delete process.env.PUBLIC_BASE_URL;
   const previous = process.env.STAFF_PASSWORD_HASH;
-  process.env.STAFF_PASSWORD_HASH = passwordHash("concurrent-setup-password");
+  delete process.env.STAFF_PASSWORD_HASH;
   try {
     const app = createHostedApp(db);
-    const create = (username: string) => request(app).post("/api/setup/owner").send({ username, fullName: username, password: "test-chosen-password", setupPassword: "concurrent-setup-password" });
+    const create = (username: string) => request(app).post("/api/setup/owner").send({ username, fullName: username, password: "test-chosen-password" });
     const results = await Promise.all([create("owner-one"), create("owner-two")]);
     assert.deepEqual(results.map(r => r.status).sort(), [201, 409]);
     assert.equal(Number((await db.query("SELECT count(*) FROM coffee.staff_accounts")).rows[0].count), 1);

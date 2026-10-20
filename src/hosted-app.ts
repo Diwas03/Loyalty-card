@@ -127,15 +127,6 @@ export function createHostedApp(
       res.status(429).json({ error: "Too many attempts. Try again in one minute." });
       return;
     }
-    const hash = process.env.STAFF_PASSWORD_HASH;
-    if (!hash || !/^[^:]+:[a-f0-9]{64}$/i.test(hash)) {
-      res.status(503).json({ error: "Shop setup is not configured. Contact the shop administrator." });
-      return;
-    }
-    if (!verifyPassword(req.body.setupPassword, hash)) {
-      res.status(403).json({ error: "The shop setup password is incorrect." });
-      return;
-    }
     await register(req, res, true);
   });
   app.post("/api/staff/accounts", staff, async (req, res) => {

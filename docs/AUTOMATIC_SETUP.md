@@ -5,10 +5,10 @@ Production URL: **https://loyalty-card-pi.vercel.app**.
 ## Create staff accounts in the website
 
 Open `/register.html` to create the first owner account with your name, chosen
-username and a new password of 12–200 characters. The shop setup password is the
-original shop password whose salted hash is saved as `STAFF_PASSWORD_HASH` in
-Vercel. It authorizes first-owner creation only; it does not choose the new
-account's username or password. No predefined account is created automatically.
+username and a new password of 12–200 characters. No shop setup password or
+`STAFF_PASSWORD_HASH` setting is required for registration. The first person who
+registers becomes the owner, so complete registration before sharing an unclaimed
+shop's link. No predefined account is created automatically.
 Passwords are hashed with scrypt before they are stored in the database.
 
 Sign in at `/login.html`. Owners see **Create a staff account** in their dashboard
