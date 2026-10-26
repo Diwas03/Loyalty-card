@@ -55,7 +55,7 @@ The commands prompt for hidden passwords and write hashes directly to Postgres. 
 
 ## 4. Import the GitHub repository into Vercel
 
-1. Create/sign in to your Vercel account, connect GitHub, choose **Add New → Project**, and import `Diwas03/Loyalty-card` on `main`.
+1. Create/sign in to your Vercel account, connect GitHub, choose **Add New → Project**, and import `jigmesherabphuntsho/Loyaltycardv0` on `main`.
 2. The included `vercel.json` selects `npm run build`, static output `public`, and routes APIs/wallet issuance to the serverless function. Use Node **24.x**, one production deployment and no custom SQLite disk.
 3. Add these **Production-only** environment values in the project settings:
 
