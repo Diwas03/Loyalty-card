@@ -15,6 +15,8 @@ Verified 27 October 2026 against an isolated loopback PostgreSQL 17 cluster. No 
 | Development seed, repeated | Two independent businesses, each one membership with one stamp; no duplicate credit |
 | npm run pilot + GET /healthz | Started on loopback with external wallet delivery disabled; returned status ok, schema coffee |
 
+Local preview follow-up: fixed missing static-file middleware in pilot-server.ts (Vercel normally serves public files outside Express). Verified HTTP 200 for /business/, login, registration, dashboard, customer root, staff.js, style.css and the scanner bundle on the actual running pilot. Headless Edge confirmed the business page title and unauthenticated dashboard-to-login navigation with no script errors. Typecheck and production build passed after the fix.
+
 No lint script is configured. Synthetic signing verifies the pass archive/signature mechanics; it is not an Apple-issued pass. Google tests use a local HTTP stub, not live issuer authorization. Scanner decoded frames are emulated; a physical camera/device permission test remains necessary.
 
 Screenshots use synthetic fixture data. [360px report](screenshots/reports-360.png), [390px report](screenshots/reports-390.png), [tablet report](screenshots/reports-768.png), [desktop report](screenshots/reports-1440.png), [390px customer card](screenshots/customer-390.png). These are after-change captures; no pre-change screenshot was captured. The mobile report was visually reviewed as well as checked for horizontal overflow. Reduced-motion mode was enabled in the upgrade browser workflow.

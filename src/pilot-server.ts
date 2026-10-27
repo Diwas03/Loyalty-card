@@ -1,4 +1,6 @@
 import "dotenv/config";
+import express from "express";
+import { fileURLToPath } from "node:url";
 import { Pool } from "pg";
 import { initializeHosted } from "./hosted-runtime.js";
 import { createHostedApp } from "./hosted-app.js";
@@ -15,5 +17,8 @@ process.env.APPLE_WALLET_ENABLED="false";
 const db=new Pool({connectionString:url.toString(),ssl:false});
 try { await initializeHosted(db); } catch(error) { await db.end(); throw error; }
 const app=createHostedApp(db,promise=>void promise.catch(()=>console.error("Local pilot background job failed; inspect durable delivery status.")));
+// Vercel serves public/ separately; the standalone pilot must serve it itself.
+app.use("/vendor/zxing",express.static(fileURLToPath(new URL("../node_modules/@zxing/browser/umd/",import.meta.url))));
+app.use(express.static(fileURLToPath(new URL("../public/",import.meta.url))));
 const server=app.listen(Number(process.env.PORT || 3000),"127.0.0.1",()=>console.log("Local multi-shop pilot: http://127.0.0.1:"+(process.env.PORT || 3000)+"/business/ (external wallet delivery disabled)"));
 for(const signal of ["SIGINT","SIGTERM"] as const) process.once(signal,()=>server.close(async()=>{await db.end();}));
