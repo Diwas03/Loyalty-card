@@ -21,7 +21,7 @@
     $("#consent-shop").textContent = shop.name;
     document.documentElement.style.setProperty("--shop-color", shop.color || "#41291d");
     $("#terms").textContent =
-      `One paid coffee earns one stamp. ${shop.stampGoal} stamps earn a free coffee.`;
+      `One qualifying paid purchase earns one stamp. ${shop.stampGoal} stamps earn ${shop.rewardLabel || "one reward"}.`;
     button.textContent = "Create my card";
     if (session.member) {
       $("#heading").textContent = "Welcome back, " + session.member.name + ".";

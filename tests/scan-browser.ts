@@ -64,10 +64,10 @@ try {
   await page.getByText("Invalid QR code. Please show a valid customer membership QR for Demo Coffee Shop.", { exact: true }).first().waitFor();
   assert.equal(Number((await db.query("SELECT stamps FROM coffee.members WHERE id=$1", [member.id])).rows[0].stamps), 0);
   await scan();
-  await page.waitForFunction(() => document.querySelector("#message")?.textContent?.startsWith("One stamp added"));
+  await page.waitForFunction(() => document.querySelector("#customer-outcome")?.textContent?.startsWith("One stamp added"));
   assert.equal(Number((await db.query("SELECT stamps FROM coffee.members WHERE id=$1", [member.id])).rows[0].stamps), 1);
   await scan();
-  await page.waitForFunction(() => document.querySelector("#message")?.textContent?.includes("No extra stamp"));
+  await page.waitForFunction(() => document.querySelector("#customer-outcome")?.textContent?.includes("No extra stamp"));
   assert.equal(Number((await db.query("SELECT stamps FROM coffee.members WHERE id=$1", [member.id])).rows[0].stamps), 1);
   await db.query("UPDATE coffee.scan_requests SET created_at=created_at-6000");
   let loseResponse = true;
@@ -76,11 +76,11 @@ try {
     else await route.continue();
   });
   await scan();
-  await page.waitForFunction(() => document.querySelector("#message")?.textContent?.includes("request key is retained"));
+  await page.waitForFunction(() => document.querySelector("#customer-outcome")?.textContent?.includes("request key is retained"));
   await page.reload();
   await page.locator("#identity").filter({hasText:"scanner"}).waitFor();
   await scan();
-  await page.waitForFunction(() => document.querySelector("#message")?.textContent?.startsWith("One stamp added"));
+  await page.waitForFunction(() => document.querySelector("#customer-outcome")?.textContent?.startsWith("One stamp added"));
   assert.equal(Number((await db.query("SELECT stamps FROM coffee.members WHERE id=$1", [member.id])).rows[0].stamps), 2);
   assert.equal(await page.evaluate(() => sessionStorage.getItem("coffeePending")), null);
   await page.locator("#logout").click();
@@ -142,7 +142,7 @@ try {
   await friend.waitForURL(url => url.searchParams.has("member"));
   await friend.locator("#card-progress").waitFor();
   await scan(new URL(friend.url()).searchParams.get("member")!);
-  await page.waitForFunction(() => document.querySelector("#message")?.textContent?.startsWith("One stamp added"));
+  await page.waitForFunction(() => document.querySelector("#customer-outcome")?.textContent?.startsWith("One stamp added"));
   await card.bringToFront();
   await card.evaluate(()=>window.dispatchEvent(new Event("online")));
   await card.waitForFunction(() => document.querySelector("#card-progress")?.textContent === "2 / 8 stamps", {}, { timeout: 12000 });

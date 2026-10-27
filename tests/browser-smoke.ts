@@ -61,7 +61,7 @@ try {
   await scan();
   await page.waitForFunction(() =>
     document
-      .querySelector("#message")
+      .querySelector("#customer-outcome")
       ?.textContent?.includes("request key is retained"),
   );
   await scan();
@@ -98,7 +98,7 @@ try {
   await page.locator("#redeem").click();
   await page.waitForFunction(() =>
     document
-      .querySelector("#message")
+      .querySelector("#customer-outcome")
       ?.textContent?.startsWith("Request rejected:"),
   );
   assert.equal(
