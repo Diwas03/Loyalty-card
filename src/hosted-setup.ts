@@ -5,6 +5,9 @@ export async function installHosted(db: HostedDB) {
   await db.query(readFileSync("supabase/schema.sql", "utf8"));
   await db.query(readFileSync("supabase/shops.sql", "utf8"));
   await db.query(readFileSync("supabase/referrals.sql", "utf8"));
+  await db.query(readFileSync("supabase/pilot.sql", "utf8"));
+  await db.query(readFileSync("supabase/rewards.sql", "utf8"));
+  await db.query(readFileSync("supabase/tenancy.sql", "utf8"));
   await protectLegacyTables(db);
 }
 export async function hostedStatus(db: HostedDB) {
@@ -61,9 +64,13 @@ export async function importLegacyPublic(db: HostedDB) {
       ])
     ).rows[0].present;
   if (await has("operations"))
+    {
+    await db.query("SELECT set_config('coffee.importing','on',true)");
     await db.query(
       "INSERT INTO coffee.operations(key,member_id,kind,result,actor,created_at) SELECT key,member_id,kind,result::jsonb,coalesce(actor,'legacy'),coalesce(created_at,0) FROM public.operations",
     );
+    await db.query("SELECT set_config('coffee.importing','off',true)");
+    }
   if (await has("staff_accounts"))
     await db.query(
       "INSERT INTO coffee.staff_accounts(username,password_hash,role,enabled) SELECT username,password_hash,role,enabled::text IN ('1','true') FROM public.staff_accounts ON CONFLICT(username) DO NOTHING",
@@ -77,12 +84,16 @@ export async function importLegacyPublic(db: HostedDB) {
       "UPDATE coffee.programme SET stamp_goal=(SELECT stamp_goal FROM public.programme WHERE id=1) WHERE id=1",
     );
   await db.query("UPDATE coffee.shops SET stamp_goal=(SELECT stamp_goal FROM coffee.programme WHERE id=1) WHERE id='default'");
+  await db.query(`INSERT INTO coffee.ledger(shop_id,member_id,operation_key,kind,stamp_delta,reward_delta,stamps_after,rewards_after,rule_goal,actor,created_at)
+    SELECT m.shop_id,m.id,'opening:'||m.id,'opening',m.stamps,m.rewards,m.stamps,m.rewards,s.stamp_goal,'migration',(extract(epoch FROM clock_timestamp())*1000)::bigint
+    FROM coffee.members m JOIN coffee.shops s ON s.id=m.shop_id WHERE NOT EXISTS(SELECT 1 FROM coffee.ledger l WHERE l.member_id=m.id)`);
   await db.query(
     "SELECT setval('coffee.revision',GREATEST(COALESCE((SELECT max(version) FROM coffee.members),1),1),true)",
   );
   await db.query(
     "INSERT INTO coffee.jobs(member_id,version) SELECT id,version FROM coffee.members",
   );
+  await db.query("SELECT coffee.backfill_rewards()");
   return { imported: true, count: sourceCount };
 }
 export async function configureHostedCron(

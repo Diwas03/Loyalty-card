@@ -9,6 +9,22 @@
   $("#save").hidden = false;
   let initial = true, loading = false, previous;
   if (id) {
+    const transfer = document.createElement("button");
+    transfer.id="transfer-card"; transfer.hidden=true;
+    transfer.className = "secondary"; transfer.textContent = "Transfer card to another device";
+    $("#member-tools").append(transfer);
+    const transferLink = document.createElement("input"); transferLink.readOnly = true; transferLink.hidden = true;
+    transferLink.setAttribute("aria-label", "Private single-use transfer link, valid for ten minutes");
+    $("#member-tools").append(transferLink);
+    transfer.onclick = async () => {
+      transfer.disabled = true;
+      try {
+        const response = await fetch("/api/members/" + encodeURIComponent(id) + "/transfer", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}", cache: "no-store" });
+        const data = await response.json(); if (!response.ok) throw Error(data.error || "Transfer is unavailable on this server.");
+        transferLink.value = new URL(data.transferUrl, location.origin).href; transferLink.hidden = false; transferLink.focus(); transferLink.select();
+        status("Private transfer link ready. Copy it to your other device; it works once within ten minutes. Creating another link replaces this one.");
+      } catch(error) { status(error.message, true); } finally { transfer.disabled = false; }
+    };
     document.body.classList.add("has-member");
     $("#wallet-toolbar").hidden = true;
     $("#member-tools").hidden = false;
@@ -35,11 +51,25 @@
       if (id) {
         if (!CardUI.uuid.test(id)) throw Error("Invalid membership link.");
         const member = await readMember(id);
+        $("#transfer-card").hidden = member.transferEnabled !== true;
         const signature = JSON.stringify(member);
         if (signature !== previous) { CardUI.render($("#card"), member); previous = signature; }
         document.title = (member.shopName || "Loyalty") + " · My card";
         $("nav a").textContent = member.shopName || "Loyalty";
         $("#terms").textContent = `One paid coffee earns one stamp. ${member.stampGoal} stamps earn ${member.rewardLabel || "a free coffee"}.`;
+        if (member.vouchers) {
+          let details = $("#reward-history");
+          if (!details) { details=document.createElement("section"); details.id="reward-history"; $("#card").after(details); }
+          details.replaceChildren();
+          const heading=document.createElement("h2"); heading.textContent="Rewards and activity"; details.append(heading);
+          if (!member.vouchers.length) { const empty=document.createElement("p");empty.textContent="No rewards issued yet. Your progress is shown on your card.";details.append(empty); }
+          for(const voucher of member.vouchers) {
+            const row=document.createElement("p"); row.textContent=voucher.label+" · "+voucher.status+(voucher.expires_at ? " · expires "+new Date(Number(voucher.expires_at)).toLocaleDateString() : " · no expiry"); details.append(row);
+          }
+          for(const event of member.history || []) {
+            const row=document.createElement("p");row.textContent=event.kind+" · "+new Date(Number(event.created_at)).toLocaleString()+(event.reason ? " · "+event.reason : "");details.append(row);
+          }
+        }
         const referral = member.referral;
         if (referral && /^[a-f0-9]{32}$/.test(referral.code)) {
           $("#referral-section").hidden = false;

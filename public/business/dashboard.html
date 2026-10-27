@@ -23,7 +23,7 @@
     <main id="main-content">
     <header>
       <p class="eyebrow">BUSINESS WORKSPACE</p>
-      <h1>Your shop, <em>in focus.</em></h1>
+      <h1>Business workspace</h1>
       <p>Find your regulars, scan a card, and make their next visit count.</p>
       <a class="button quick-scan" href="#scan">Scan a customer card <span aria-hidden="true">↗</span></a>
     </header>
@@ -54,12 +54,13 @@
             >Open private customer card ↗</a
           >
           <div class="actions">
+            <button id="purchase" disabled>Record qualifying purchase</button>
             <button id="redeem" class="secondary" disabled>
               Redeem one reward
             </button>
           </div>
           <small
-            >Scan this shop’s customer QR to award one stamp automatically. Looking up a customer adds no stamps. Redeeming a reward earns no stamp.</small
+            >Scan or look up a card, verify the paid purchase, then record it. Scanning alone never earns stamps.</small
           >
         </section>
         <section>
@@ -76,13 +77,13 @@
         </details>
 </div></div></div><div id="panel-scan" class="dashboard-panel narrow-panel" role="tabpanel" aria-labelledby="tab-scan" hidden>        <section id="scan-panel">
           <h2>Scan a card</h2>
-          <p id="scan-help">Scan this shop’s customer card to award one stamp automatically.</p>
+          <p id="scan-help">Scan to identify a customer, then confirm a paid qualifying purchase.</p>
           <p id="scan-feedback" aria-live="off" hidden></p>
           <button id="scan" disabled>Start camera</button
           ><button id="stop" class="secondary" hidden>Stop camera</button
           ><video id="video" muted playsinline hidden></video>
           <form id="lookup">
-            <label for="member">Read-only lookup · membership ID</label>
+            <label for="member">Membership ID · manual fallback</label>
             <div class="row">
               <input id="member" required placeholder="Membership ID" /><button>
                 Look up

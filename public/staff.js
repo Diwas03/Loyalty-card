@@ -1,18 +1,28 @@
-(() => {
+(async () => {
 let staffSession;
 try {
   const handoff = JSON.parse(sessionStorage.getItem("loyalty-staff-handoff") || "null");
   sessionStorage.removeItem("loyalty-staff-handoff");
   if (handoff && Date.now() - handoff.createdAt < 15000 && /^[a-f0-9]{64}$/.test(handoff.token)) staffSession = handoff.token;
 } catch {}
+if (!staffSession) {
+  try {
+    const restored = await fetch("/api/staff/session", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}", cache: "no-store" });
+    if (restored.ok) staffSession = (await restored.json()).token;
+  } catch {}
+}
 if (!staffSession) { location.replace("/business/login.html"); return; }
-const endSession = () => { staffSession = undefined; location.replace("/business/login.html?expired=1"); };
+const endSession = async () => {
+  try { await api("/api/logout", { method: "POST", body: "{}" }); } catch {}
+  await fetch("/api/staff/session", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: "{}" }).catch(() => {});
+  staffSession = undefined; location.replace("/business/login.html?expired=1");
+};
 let idleTimer;
 const touchSession = () => { clearTimeout(idleTimer); idleTimer = setTimeout(endSession, 15 * 60000); };
 for (const event of ["pointerdown", "keydown"]) document.addEventListener(event, touchSession, { passive: true });
 touchSession();
 setTimeout(endSession, 30 * 60000);
-window.addEventListener("pageshow", (event) => { if (event.persisted) endSession(); });
+window.addEventListener("pageshow", (event) => { if (event.persisted) location.reload(); });
 const $ = (s) => document.querySelector(s);
 const message = (t, error = false) => {
   $("#message").textContent = t;
@@ -85,7 +95,10 @@ function showTab(key, focus = false) {
   history.replaceState(null, "", "#" + key);
   if (key === "overview") loadOverview().catch(error => message(error.message));
   if (key === "referrals") loadReferrals().catch(error => message(error.message));
+  if (key === "reports") loadReport();
+  if (key === "team" && $("#team-management")) loadTeam();
 }
+window.addEventListener("resize", () => document.querySelector('[data-tab][aria-selected="true"]')?.scrollIntoView({block:"nearest",inline:"nearest"}));
 for (const button of document.querySelectorAll("[data-tab]")) {
   button.onclick = () => showTab(button.dataset.tab);
   button.onkeydown = event => {
@@ -130,6 +143,9 @@ async function loadOverview() {
 $("#refresh-overview").onclick = () => loadOverview().catch(error => message(error.message));
 setInterval(() => { if (!document.hidden && currentTab === "overview") loadOverview().catch(error => message(error.message)); }, 30000);
 async function loadReferrals() {
+  const fields=[...$("#referral-settings").elements];
+  for(const field of fields) field.disabled=true;
+  $("#referral-settings").setAttribute("aria-busy","true");
   $("#referral-settings").inert = true;
   try {
   const result = await api("/api/staff/referrals");
@@ -143,7 +159,7 @@ async function loadReferrals() {
     $("#referral-activity").append(row);
   }
   if (!result.referrals.length) $("#referral-activity").append(text("p", "No referred signups yet. Customers can share their referral link from their card."));
-  } finally { $("#referral-settings").inert = false; }
+  } finally { $("#referral-settings").inert = false; for(const field of fields) field.disabled=false; $("#referral-settings").setAttribute("aria-busy","false"); }
 }
 $("#referral-settings").onsubmit = async event => {
   event.preventDefault(); const button = event.currentTarget.querySelector("button"); button.disabled = true;
@@ -181,17 +197,20 @@ async function search() {
 async function lookup() {
   if (busy) return;
   $("#redeem").disabled = true;
+    $("#purchase").disabled = true;
   selected = undefined;
   const m = await api(
     "/api/staff/members/" + encodeURIComponent($("#member").value.trim()),
   );
   selected = m.id;
+  $("#purchase").disabled = false;
   $("#customer-name").textContent = m.name;
   $("#balance").textContent =
     `${m.stamps} / ${m.stampGoal} stamps · ${m.rewards} available rewards`;
   $("#customer-link").hidden = false;
-  $("#customer-link").href = "/?member=" + encodeURIComponent(m.id);
+  $("#customer-link").href = "/?member=" + encodeURIComponent(m.privateCardToken || m.id);
   $("#redeem").disabled = m.rewards < 1;
+  if ($("#correction")) $("#correction").hidden = !["owner","manager"].includes(role);
   $("#history").replaceChildren();
   for (const h of m.history) {
     const row = text(
@@ -272,6 +291,7 @@ $("#refresh").onclick = () => lookup().catch((e) => message(e.message));
 $("#logout").onclick = async () => {
   try {
     await api("/api/logout", { method: "POST", body: "{}" });
+    await fetch("/api/staff/session", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: "{}" });
     controls?.stop();
     staffSession = undefined;
     location.replace("/business/login.html");
@@ -279,8 +299,141 @@ $("#logout").onclick = async () => {
     message(e.message);
   }
 };
+async function installWorkspacePicker(me) {
+  const workspaces=await api("/api/staff/workspaces");
+  $("#workspace-label")?.remove();
+  const label=text("label","Business and location");const select=document.createElement("select");select.id="workspace-picker";
+  label.id="workspace-label";
+  for(const workspace of workspaces){const option=text("option",workspace.location_name+" · "+workspace.name+" · "+workspace.role);option.value=JSON.stringify([workspace.shop_id,workspace.location_id]);option.selected=workspace.shop_id===me.shopId&&workspace.location_id===me.locationId;select.append(option);}
+  label.append(select);$("#identity").after(label);
+  select.onchange=async()=>{
+    if(busy||pending){message("Resolve your pending transaction before changing workspace.",true);select.value=JSON.stringify([me.shopId,me.locationId]);return;}
+    select.disabled=true;
+    try{const [shopId,locationId]=JSON.parse(select.value);await api("/api/staff/workspace",{method:"POST",body:JSON.stringify({shopId,locationId})});location.reload();}
+    catch(error){message(error.message,true);select.disabled=false;select.value=JSON.stringify([me.shopId,me.locationId]);}
+  };
+}
+function installTeamTools(){
+  const section=document.createElement("section");section.id="team-management";
+  section.innerHTML='<h2>Team and locations</h2><p>Owners manage settings and access. Managers can operate the counter, correct progress and read reports. Cashiers can record purchases and redeem rewards at assigned locations. Access changes revoke the affected user’s sessions.</p><form id="location-create"><label>New location name<input name="name" maxlength="80" required></label><button>Create location</button></form><div id="team-list" role="status"></div><form id="team-invite"><h3>Invite an existing staff account</h3><p>Share this private one-use link yourself. It expires in 48 hours. Accepting requires a signed-in account.</p><label>Role<select name="role"><option value="cashier">Cashier</option><option value="manager">Manager</option></select></label><label>Locations<select name="locations" multiple required></select></label><button>Create invitation</button><label>Private invitation link<input name="link" readonly></label></form>';
+  $("#panel-team").append(section);
+  $("#location-create").onsubmit=async event=>{
+    event.preventDefault();const form=event.target,button=form.querySelector("button");button.disabled=true;
+    try{await api("/api/staff/locations",{method:"POST",body:JSON.stringify({name:form.elements.name.value})});form.reset();await loadTeam();await installWorkspacePicker(await api("/api/staff/me"));message("Location created.");}
+    catch(error){message(error.message,true);}finally{button.disabled=false;}
+  };
+  $("#team-invite").onsubmit=async event=>{
+    event.preventDefault();const form=event.target,button=form.querySelector("button");button.disabled=true;
+    try{const data=await api("/api/staff/team-invites",{method:"POST",body:JSON.stringify({role:form.elements.role.value,locations:[...form.elements.locations.selectedOptions].map(option=>option.value)})});form.elements.link.value=new URL(data.inviteUrl,location.origin).href;message("Invitation ready. Share only with the intended staff member.");}
+    catch(error){message(error.message,true);}finally{button.disabled=false;}
+  };
+}
+async function loadTeam(){
+  const container=$("#team-list");container.textContent="Loading team…";
+  try{
+    const data=await api("/api/staff/team");container.replaceChildren();
+    const inviteLocations=$("#team-invite select[name=locations]");inviteLocations.replaceChildren();
+    for(const loc of data.locations){const option=text("option",loc.name);option.value=loc.id;inviteLocations.append(option);}
+    for(const member of data.members){
+      const form=document.createElement("form");form.className="team-member";form.append(text("h3",(member.full_name||member.username)+" · "+member.username));
+      const roleLabel=text("label","Business role"),roleSelect=document.createElement("select");roleSelect.name="role";
+      for(const role of ["owner","manager","cashier"]){const option=text("option",role);option.value=role;option.selected=role===member.role;roleSelect.append(option);}roleLabel.append(roleSelect);form.append(roleLabel);
+      const activeLabel=text("label","Enabled "),active=document.createElement("input");active.type="checkbox";active.className="inline-check";active.checked=member.enabled;activeLabel.append(active);form.append(activeLabel);
+      const locLabel=text("label","Assigned locations (owners can access all)"),locations=document.createElement("select");locations.multiple=true;
+      for(const loc of data.locations){const option=text("option",loc.name);option.value=loc.id;option.selected=member.locations.includes(loc.id);locations.append(option);}locLabel.append(locations);form.append(locLabel);
+      const button=text("button","Save role and access");form.append(button);
+      form.onsubmit=async event=>{event.preventDefault();if(!confirm("Change access for "+member.username+" and revoke their current sessions?"))return;button.disabled=true;
+        try{await api("/api/staff/team/"+encodeURIComponent(member.username),{method:"POST",body:JSON.stringify({role:roleSelect.value,enabled:active.checked,locations:[...locations.selectedOptions].map(option=>option.value)})});message("Access updated; affected sessions revoked.");await loadTeam();}
+        catch(error){message(error.message,true);}finally{button.disabled=false;}};
+      container.append(form);
+    }
+  }catch(error){container.textContent=error.message;}
+}
+function installPilotTools() {
+  const correction = document.createElement("form");
+  correction.id = "correction"; correction.hidden = true;
+  correction.innerHTML = '<h3>Correct stamp progress</h3><p>Owner or manager only. Corrections preserve rewards and cannot cross a reward threshold. This is not a sale refund.</p><label>Stamp change<input name="delta" type="number" min="-100" max="100" required></label><label>Reason<input name="reason" minlength="3" maxlength="240" required></label><button>Save correction</button>';
+  $(".actions").after(correction);
+  const rotate = document.createElement("button"); rotate.type = "button"; rotate.className = "secondary"; rotate.textContent = "Replace private card link";
+  correction.append(rotate);
+  rotate.onclick = async () => {
+    if (!selected || !confirm("Invalidate the previous private link? Existing shortcuts will need the replacement. The balance and scanned membership ID stay the same.")) return;
+    rotate.disabled = true;
+    try {
+      const result = await api("/api/staff/members/" + selected + "/rotate-link", { method:"POST", body:JSON.stringify({confirm:true}) });
+      $("#customer-link").href = result.customerUrl;
+      message("Private link replaced. Open the customer card link and share it securely.");
+    } catch(error) { message(error.message,true); } finally { rotate.disabled = false; }
+  };
+  const region = document.createElement("form");
+  region.innerHTML = '<h3>Regional settings</h3><p>Bhutan defaults: Nu. (BTN), Asia/Thimphu, BT (+975). No phone number is required for membership.</p><label>Currency code<input name="currency" value="BTN" required pattern="[A-Z]{3}"></label><label>Timezone<input name="timezone" value="Asia/Thimphu" required></label><label>Country code<input name="country" value="BT" required pattern="[A-Z]{2}"></label><button>Save regional settings</button><p role="status"></p>';
+  $("#programme-section").append(region);
+  const expiry=document.createElement("form");
+  expiry.innerHTML='<h3>New reward validity</h3><p>Existing rewards keep their promised terms. Leave empty for no expiry.</p><label>Validity in days<input name="days" type="number" min="1" max="3650"></label><button>Save reward validity</button><p role="status"></p>';
+  $("#programme-section").append(expiry);
+  api("/api/staff/shop").then(shop=>{expiry.elements.days.value=shop.reward_expiry_days ?? "";}).catch(error=>message(error.message,true));
+  expiry.onsubmit=async event=>{
+    event.preventDefault();const button=expiry.querySelector("button");button.disabled=true;
+    try { const result=await api("/api/staff/reward-expiry",{method:"POST",body:JSON.stringify({days:expiry.elements.days.value===""?null:Number(expiry.elements.days.value)})});expiry.querySelector('[role="status"]').textContent=result.appliesTo; }
+    catch(error){expiry.querySelector('[role="status"]').textContent=error.message;}finally{button.disabled=false;}
+  };
+  api("/api/staff/shop").then(shop => { for(const field of ["currency","timezone","country"]) region.elements[field].value = shop[field]; }).catch(error=>message(error.message,true));
+  region.onsubmit = async event => {
+    event.preventDefault(); const button = region.querySelector("button"); button.disabled = true;
+    try {
+      await api("/api/staff/region", { method:"POST", body:JSON.stringify(Object.fromEntries(new FormData(region))) });
+      region.querySelector('[role="status"]').textContent = "Regional settings saved.";
+    } catch(error) { region.querySelector('[role="status"]').textContent = error.message; } finally { button.disabled = false; }
+  };
+  let correctionPending;
+  correction.onsubmit = async event => {
+    event.preventDefault();
+    if (!selected || busy || !confirm("Save this audited progress correction?")) return;
+    const values = { delta: Number(correction.elements.delta.value), reason: correction.elements.reason.value.trim(), confirm: true };
+    const signature = JSON.stringify([selected, values]);
+    if (!correctionPending || correctionPending.signature !== signature) correctionPending = { signature, key: crypto.randomUUID() };
+    const button = correction.querySelector("button"); button.disabled = true;
+    try {
+      await api("/api/staff/members/" + selected + "/adjustment", { method: "POST", headers: { "Idempotency-Key": correctionPending.key }, body: JSON.stringify(values) });
+      correctionPending = undefined; correction.reset(); await lookup(); message("Correction saved with your name and reason.");
+    } catch (error) { message(error.message, true); } finally { button.disabled = false; }
+  };
+  const button = document.createElement("button"); button.id = "tab-reports"; button.type = "button"; button.dataset.tab = "reports"; button.textContent = "Reports";
+  button.setAttribute("role", "tab"); button.setAttribute("aria-controls", "panel-reports"); button.setAttribute("aria-selected", "false");
+  button.onclick = () => showTab("reports");
+  button.onkeydown = event => {
+    if (!["ArrowLeft","ArrowRight","Home","End"].includes(event.key)) return;
+    event.preventDefault();
+    const tabs=[...document.querySelectorAll("[data-tab]")].filter(tab=>!tab.hidden);
+    const index=tabs.indexOf(button), next=event.key==="Home"?0:event.key==="End"?tabs.length-1:(index+(event.key==="ArrowRight"?1:-1)+tabs.length)%tabs.length;
+    showTab(tabs[next].dataset.tab,true);
+  };
+  $(".business-tabs").append(button); availableTabs.add("reports");
+  const panel = document.createElement("section"); panel.id = "panel-reports"; panel.className = "dashboard-panel"; panel.hidden = true;
+  panel.setAttribute("role", "tabpanel"); panel.setAttribute("aria-labelledby", "tab-reports");
+  panel.innerHTML = '<h2>Recorded activity</h2><p id="report-status" role="status">Loading report…</p><dl id="report-values"></dl><button id="report-refresh">Refresh report</button> <button id="export-customers" class="secondary">Export customer CSV</button>';
+  $("main").append(panel); $("#report-refresh").onclick = loadReport;
+  $("#export-customers").onclick = async () => {
+    try {
+      const response = await fetch("/api/staff/customers.csv", { headers: { Authorization: "Bearer " + staffSession }, cache: "no-store", credentials: "omit" });
+      if (!response.ok) throw Error("Export failed; check your session and retry.");
+      const url = URL.createObjectURL(await response.blob()); const link = document.createElement("a"); link.href = url; link.download = "customers.csv"; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch(error) { message(error.message, true); }
+  };
+}
+async function loadReport() {
+  $("#report-status").textContent = "Loading recorded activity…";
+  try {
+    const report = await api("/api/staff/reports"); $("#report-values").replaceChildren();
+    for (const [key,label] of Object.entries({members:"Members",qualifying_visits:"Confirmed paid visits",visiting_members:"Members with a paid visit",rewards_issued:"Rewards issued",rewards_redeemed:"Rewards redeemed",outstanding_rewards:"Outstanding rewards",corrections:"Progress corrections"})) {
+      $("#report-values").append(text("dt",label),text("dd",report[key]));
+    }
+    $("#report-status").textContent = report.period + ". Sales: " + report.salesLabel + ". " + report.definitions;
+  } catch(error) { $("#report-status").textContent = error.message; }
+}
+
 async function recordAction(action, automatic = false) {
-    if (!selected || busy || (action === "purchase" && !automatic)) return;
+    if (!selected || busy) return;
     const id = selected;
     if (pending && (pending.id !== id || pending.action !== action)) {
       message(
@@ -289,7 +442,7 @@ async function recordAction(action, automatic = false) {
       return;
     }
     if (
-      !automatic && !confirm(
+      !confirm(
         action === "purchase"
           ? "Confirm one paid qualifying coffee?"
           : "Confirm one free coffee reward redemption?",
@@ -302,13 +455,14 @@ async function recordAction(action, automatic = false) {
     }
     busy = true;
     let saved = false;
+    $("#purchase").disabled = true;
     $("#redeem").disabled = true;
     try {
       const scanned = action === "purchase";
       const result = await api(`/api/staff/members/${id}/${scanned ? "scan" : action}`, {
         method: "POST",
         headers: { "Idempotency-Key": pending.key },
-        body: JSON.stringify(scanned ? {} : { confirm: true }),
+        body: JSON.stringify({ confirm: true }),
       });
       saved = true;
       pending = null;
@@ -337,8 +491,10 @@ async function recordAction(action, automatic = false) {
             " Your request key is retained; retry the same action if the response was lost.",
         );
       $("#redeem").disabled = !selected;
+      $("#purchase").disabled = !selected;
     }
   };
+$("#purchase").onclick = () => recordAction("purchase");
 $("#redeem").onclick = () => recordAction("redeem");
 $("#scan").onclick = async () => {
   if (busy || !role || $("#scan").disabled) return;
@@ -352,7 +508,7 @@ $("#scan").onclick = async () => {
   $("#scan").disabled = true;
   try {
     controls?.stop();
-    scanFeedback("Point the camera at the customer’s membership QR for " + currentShopName + ". A valid scan adds one stamp automatically.");
+    scanFeedback("Point the camera at the customer’s membership QR for " + currentShopName + ". Scanning identifies the card. Confirm the paid purchase after checking it.");
     const scannerControls = await new ZXingBrowser.BrowserQRCodeReader().decodeFromVideoDevice(
       undefined,
       "video",
@@ -368,8 +524,7 @@ $("#scan").onclick = async () => {
           $("#member").value = id;
           await lookup();
           if (generation !== scanGeneration) return;
-          if (scanStamping) await recordAction("purchase", true);
-          else throw Error("Automatic stamping is unavailable. Please contact the shop owner.");
+          message("Card identified. Check the customer and confirm a qualifying purchase.");
           showTab("customers");
         } catch (error) {
           scanFeedback(error.invalidQR || error.status === 404 ? "Invalid QR code. Please show a valid customer membership QR for " + currentShopName + "." : error.message, true);
@@ -406,6 +561,7 @@ $("#staff-account").onsubmit = async (event) => {
     });
     form.reset();
     $("#account-message").textContent = `Account created for ${account.fullName}. They can now sign in as ${account.username}.`;
+    if($("#team-management")) await loadTeam();
   } catch (error) {
     $("#account-message").textContent = error.message;
   } finally {
@@ -486,9 +642,14 @@ window.addEventListener("pagehide", () => { controls?.stop(); staffSession = und
       if (role === "owner") $("#shop-branding").hidden = false;
     }
     $("#scan").disabled = false;
+    if (me.pilotLedger) {
+      await installWorkspacePicker(me);
+      if (["owner","manager"].includes(role)) installPilotTools();
+      if (role==="owner") installTeamTools();
+    }
     if (scanStamping) {
       $("#scan").textContent = "Start QR scanner";
-      $("#scan-help").textContent = "A valid customer QR for this shop automatically adds one stamp. The camera stops after each card. Repeat scans within 5 seconds add no extra stamp. Shop signup QRs and cards from other shops cannot earn stamps here.";
+      $("#scan-help").textContent = "Scan a card or use manual lookup. Verify the paid purchase, then choose Record qualifying purchase. Repeat requests are protected against duplicate credit.";
     }
     if (role === "owner") {
       if (me.accountsEnabled) $("#accounts-section").hidden = false;
@@ -497,7 +658,7 @@ window.addEventListener("pagehide", () => { controls?.stop(); staffSession = und
       $("#goal").value = p.stampGoal;
       updatePreview();
     }
-    $("#identity").textContent = `${me.username} · ${me.role}`;
+    $("#identity").textContent = `${me.username} · ${me.businessRole || me.role}`;
     await search();
     showTab(location.hash.slice(1));
   } catch (e) {

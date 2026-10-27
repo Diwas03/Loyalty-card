@@ -27,6 +27,8 @@ beforeEach(async () => {
     "TRUNCATE coffee.members,coffee.operations,coffee.jobs,coffee.customer_enrollments,coffee.wallet_issuance,coffee.staff_accounts,coffee.sessions,coffee.request_limits,coffee.programme_changes CASCADE",
   );
   await db.query("UPDATE coffee.programme SET stamp_goal=8");
+  await db.query("TRUNCATE coffee.locations,coffee.access_audit,coffee.team_invites CASCADE");
+  await db.query("INSERT INTO coffee.locations(id,shop_id,name) VALUES('default:main','default','Main location')");
   await db.query("DELETE FROM coffee.shops WHERE id<>'default'");
   await db.query("UPDATE coffee.shops SET referrals_enabled=true,referral_reward_kind='stamps',referral_reward_amount=1,stamp_goal=8,name='Demo Coffee Shop',color='#41291d' WHERE id='default'");
 });
@@ -233,7 +235,7 @@ test("hosted configuration is repeatable and legacy public import preserves iden
     c.release();
   }
   const m = await readMember(db, original.id);
-  assert.equal(m.stamps, 1);
+  assert.equal(m.stamps, (original.stamps + 1) % 8);
   assert.equal(m.apple_token, original.apple_token);
   assert.equal(
     (await db.query("SELECT actor FROM coffee.operations")).rows[0].actor,
@@ -306,15 +308,15 @@ test("authenticated QR scanning awards one stamp, deduplicates frames and retrie
   const m = await enroll();
   const app = createHostedApp(db);
   const url = `/api/staff/members/${m.id}/scan`;
-  await request(app).post(url).send({}).expect(401);
+  await request(app).post(url).send({ confirm: true }).expect(401);
   await db.query("INSERT INTO coffee.staff_accounts VALUES($1,$2,$3,true)", ["scanner", passwordHash("scanner-test-password"), "staff"]);
   const staff = request.agent(app);
   await staff.post("/api/login").send({ username: "scanner", password: "scanner-test-password" }).expect(200).then(response => { staff.set("Authorization", "Bearer " + response.body.token); });
   await staff.post(`/api/staff/members/${m.id}/purchase`).set("Idempotency-Key", randomUUID()).send({ confirm: true }).expect(410);
-  await staff.post(url).send({}).expect(400);
-  await staff.post(url).set("Origin", "https://wrong.example").set("Idempotency-Key", randomUUID()).send({}).expect(403);
+  await staff.post(url).send({ confirm: true }).expect(400);
+  await staff.post(url).set("Origin", "https://wrong.example").set("Idempotency-Key", randomUUID()).send({ confirm: true }).expect(403);
   const keys = [randomUUID(), randomUUID()];
-  const results = await Promise.all(keys.map(key => staff.post(url).set("Idempotency-Key", key).send({}).expect(200)));
+  const results = await Promise.all(keys.map(key => staff.post(url).set("Idempotency-Key", key).send({ confirm: true }).expect(200)));
   assert.equal(results.filter(r => r.body.awarded).length, 1);
   assert.equal((await readMember(db, m.id)).stamps, 1);
   assert.equal(Number((await db.query("SELECT count(*) FROM coffee.operations WHERE member_id=$1", [m.id])).rows[0].count), 1);
@@ -322,15 +324,15 @@ test("authenticated QR scanning awards one stamp, deduplicates frames and retrie
   const ignored = results.findIndex(r => !r.body.awarded);
   // Simulate time passing: a retry of an ignored frame still cannot become a new purchase.
   await db.query("UPDATE coffee.scan_requests SET created_at=created_at-6000 WHERE member_id=$1", [m.id]);
-  const replay = await staff.post(url).set("Idempotency-Key", keys[ignored]).send({}).expect(200);
+  const replay = await staff.post(url).set("Idempotency-Key", keys[ignored]).send({ confirm: true }).expect(200);
   assert.equal(replay.body.awarded, false);
   assert.equal((await readMember(db, m.id)).stamps, 1);
-  const next = await staff.post(url).set("Idempotency-Key", randomUUID()).send({}).expect(200);
+  const next = await staff.post(url).set("Idempotency-Key", randomUUID()).send({ confirm: true }).expect(200);
   assert.equal(next.body.awarded, true);
   assert.equal((await readMember(db, m.id)).stamps, 2);
   const another = await enroll();
-  await staff.post(`/api/staff/members/${another.id}/scan`).set("Idempotency-Key", keys[0]).send({}).expect(409);
-  await staff.post(`/api/staff/members/${randomUUID()}/scan`).set("Idempotency-Key", randomUUID()).send({}).expect(404);
+  await staff.post(`/api/staff/members/${another.id}/scan`).set("Idempotency-Key", keys[0]).send({ confirm: true }).expect(409);
+  await staff.post(`/api/staff/members/${randomUUID()}/scan`).set("Idempotency-Key", randomUUID()).send({ confirm: true }).expect(404);
 });
 
 test("shops isolate enrollment cookies, staff, scans, purchases, settings and Wallet classes", async () => {
@@ -365,7 +367,7 @@ test("shops isolate enrollment cookies, staff, scans, purchases, settings and Wa
   assert.deepEqual(listed.map((m: any) => m.id), [memberA.id]);
   await staffA.get(`/api/staff/members/${memberB.id}`).expect(404);
   await staffA.post(`/api/staff/members/${memberB.id}/purchase`).set("Idempotency-Key", randomUUID()).send({ confirm: true }).expect(404);
-  await staffA.post(`/api/staff/members/${memberB.id}/scan`).set("Idempotency-Key", randomUUID()).send({}).expect(404);
+  await staffA.post(`/api/staff/members/${memberB.id}/scan`).set("Idempotency-Key", randomUUID()).send({ confirm: true }).expect(404);
   await ownerA.post("/api/staff/programme").send({ stampGoal: 6 }).expect(200);
   assert.equal((await ownerB.get("/api/staff/programme").expect(200)).body.stampGoal, 8);
   assert.equal((await readMember(db, memberB.id)).stamps, 0);
@@ -373,7 +375,7 @@ test("shops isolate enrollment cookies, staff, scans, purchases, settings and Wa
   await ownerA.post("/api/staff/shop").send({ name: "Alpha Roasters", color: "#224466", shopId: shopB }).expect(200);
   assert.equal((await request(app).get(`/api/shop?shop=${shopB}`).expect(200)).body.name, "Beta Coffee");
   assert.equal((await request(app).get(`/api/shop?shop=${shopA}`).expect(200)).body.name, "Alpha Roasters");
-  await ownerB.post(`/api/staff/members/${memberB.id}/scan`).set("Idempotency-Key", randomUUID()).send({}).expect(200);
+  await ownerB.post(`/api/staff/members/${memberB.id}/scan`).set("Idempotency-Key", randomUUID()).send({ confirm: true }).expect(200);
   await Promise.all(tasks);
   const job = (await db.query("SELECT id,status FROM coffee.jobs WHERE member_id=$1 ORDER BY id DESC LIMIT 1", [memberB.id])).rows[0];
   await ownerA.post(`/api/staff/jobs/${job.id}/retry`).send({}).expect(409);
@@ -386,14 +388,15 @@ test("shops isolate enrollment cookies, staff, scans, purchases, settings and Wa
   assert.equal(walletB.barcode.value, memberB.id);
 });
 
-test("staff sessions never use cookies; shop design is owner-only, validated and visible on customer cards", async () => {
+test("staff mutations require bearer tokens; refresh cookies are scoped; shop design is owner-only, validated and visible on customer cards", async () => {
   const app = createHostedApp(db);
   const password = "design-owner-test-password";
   await request(app).post("/api/setup/owner").send({ username: "designer", fullName: "Design Owner", shopName: "Design Shop", password }).expect(201);
   const login = await request(app).post("/api/login").send({ username: "designer", password }).expect(200);
   assert.match(login.body.token, /^[a-f0-9]{64}$/);
   assert.equal(login.body.expiresIn, 1800);
-  assert.ok(!JSON.stringify(login.headers["set-cookie"] || []).includes(login.body.token));
+  assert.match(JSON.stringify(login.headers["set-cookie"] || []), /HttpOnly/);
+  assert.match(JSON.stringify(login.headers["set-cookie"] || []), /Path=\/api\/staff\/session/);
   await request(app).get("/api/staff/me").set("Cookie", "staff=" + login.body.token).expect(401);
   const owner = request.agent(app).set("Authorization", "Bearer " + login.body.token);
   await owner.post("/api/staff/enroll").send({ name: "Removed feature" }).expect(410);
@@ -470,9 +473,9 @@ test("owner dashboard and referral settings stay inside their shop; reward payou
   const otherShop = await signup(shopB, sponsor.referral.code);
   assert.equal((await db.query("SELECT count(*)::int AS n FROM coffee.referrals")).rows[0].n, 0);
   const first = await signup(shopA, sponsor.referral.code);
-  await ownerB.post(`/api/staff/members/${first.id}/scan`).set("Idempotency-Key", randomUUID()).send({}).expect(404);
+  await ownerB.post(`/api/staff/members/${first.id}/scan`).set("Idempotency-Key", randomUUID()).send({ confirm: true }).expect(404);
   const key = randomUUID();
-  for (let i = 0; i < 2; i++) await ownerA.post(`/api/staff/members/${first.id}/scan`).set("Idempotency-Key", key).send({}).expect(200);
+  for (let i = 0; i < 2; i++) await ownerA.post(`/api/staff/members/${first.id}/scan`).set("Idempotency-Key", key).send({ confirm: true }).expect(200);
   assert.equal((await readMember(db, sponsor.id)).rewards, 2);
   assert.equal((await readMember(db, otherShop.id)).rewards, 0);
   const overviewA = (await ownerA.get("/api/staff/overview").expect(200)).body;

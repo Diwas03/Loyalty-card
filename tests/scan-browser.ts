@@ -41,7 +41,7 @@ try {
   });
   let dialogs = 0;
   const errors: string[] = [];
-  page.on("dialog", dialog => { dialogs++; void dialog.dismiss(); });
+  page.on("dialog", dialog => { dialogs++; void dialog.accept(); });
   page.on("pageerror", error => errors.push(error.message));
   await page.goto(origin + "/business/login.html");
   await page.locator("#username").fill("scanner");
@@ -56,8 +56,10 @@ try {
       test.scanTestId = id;
       test.scanTestFrame();
     }, scanId);
+    await page.waitForFunction(() => !(document.querySelector("#scan") as HTMLButtonElement).disabled);
+    if ((await page.locator("#message").textContent())?.startsWith("Card identified")) await page.locator("#purchase").click();
   };
-  assert.equal(await page.locator("#purchase").count(), 0);
+  assert.equal(await page.locator("#purchase").count(), 1);
   await scan("https://example.com/not-a-customer-card");
   await page.getByText("Invalid QR code. Please show a valid customer membership QR for Demo Coffee Shop.", { exact: true }).first().waitFor();
   assert.equal(Number((await db.query("SELECT stamps FROM coffee.members WHERE id=$1", [member.id])).rows[0].stamps), 0);
@@ -76,11 +78,7 @@ try {
   await scan();
   await page.waitForFunction(() => document.querySelector("#message")?.textContent?.includes("request key is retained"));
   await page.reload();
-  await page.waitForURL("**/business/login.html");
-  await page.locator("#username").fill("scanner");
-  await page.locator("#password").fill("browser-scanner-password");
-  await page.locator("#login button").click();
-  await page.waitForURL("**/business/dashboard.html*");
+  await page.locator("#identity").filter({hasText:"scanner"}).waitFor();
   await scan();
   await page.waitForFunction(() => document.querySelector("#message")?.textContent?.startsWith("One stamp added"));
   assert.equal(Number((await db.query("SELECT stamps FROM coffee.members WHERE id=$1", [member.id])).rows[0].stamps), 2);
@@ -121,6 +119,7 @@ try {
   await page.getByText("Saved. New referred signups will use these settings.").waitFor();
   const customer = await browser.newContext();
   const card = await customer.newPage();
+  card.on("pageerror", error => { errors.push(error.message); console.error("Customer page error:",error.message); });
   await card.goto(origin + "/join.html?shop=" + me.shopId);
   await card.locator("#name").fill("New shop customer");
   await card.locator("#accept").check();
@@ -144,6 +143,8 @@ try {
   await friend.locator("#card-progress").waitFor();
   await scan(new URL(friend.url()).searchParams.get("member")!);
   await page.waitForFunction(() => document.querySelector("#message")?.textContent?.startsWith("One stamp added"));
+  await card.bringToFront();
+  await card.evaluate(()=>window.dispatchEvent(new Event("online")));
   await card.waitForFunction(() => document.querySelector("#card-progress")?.textContent === "2 / 8 stamps", {}, { timeout: 12000 });
   await card.getByText("1 joined · 1 qualified · 0 awaiting a first purchase").waitFor();
   await page.locator("#tab-overview").click();
@@ -171,13 +172,13 @@ try {
   await card.locator("#card-progress").waitFor();
   assert.equal(await page.evaluate(() => sessionStorage.getItem("loyalty-staff-handoff")), null);
   await page.reload();
-  await page.waitForURL("**/business/login.html");
+  await page.locator("#identity").filter({hasText:"browser-owner"}).waitFor();
   await page.goto(origin + "/business/dashboard.html");
-  await page.waitForURL("**/business/login.html");
+  await page.locator("#identity").filter({hasText:"browser-owner"}).waitFor();
   await customer.close();
-  assert.equal(dialogs, 0);
+  assert.ok(dialogs > 0);
   assert.deepEqual(errors, []);
-  console.log("Browser flows passed: invalid/wrong-shop QR rejection, scan-only stamping and retry safety, temporary staff sessions, owner card design with logo, referral sharing/first-purchase rewards, dashboard monitoring, and a two-shop customer wallet. No confirmation dialog or browser exceptions.");
+  console.log("Browser flows passed: invalid/wrong-shop QR rejection, confirmed stamping and retry safety, refresh-safe staff sessions, owner card design with logo, referral sharing/first-purchase rewards, dashboard monitoring, and a two-shop customer wallet. Purchase confirmations and no browser exceptions.");
 } finally {
   await browser?.close();
   await new Promise<void>(resolve => server.close(() => resolve()));
