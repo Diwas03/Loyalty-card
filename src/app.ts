@@ -1,4 +1,5 @@
 import { staffToken } from "./staff-session.js";
+import { rememberWorkspace, forgetWorkspace, workspaceToken } from "./session-recovery.js";
 import { join, joinedMember } from "./join.js";
 import express from "express";
 import helmet from "helmet";
@@ -266,6 +267,7 @@ export function createApp(db: DB) {
           [token, Date.now() + 30 * 60000, username],
         );
         res.clearCookie("staff", { path: "/" });
+        rememberWorkspace(res, token);
         res.json({ ok: true, token, expiresIn: 1800 });
       } catch (e) {
         next(e);
@@ -273,6 +275,14 @@ export function createApp(db: DB) {
     },
   );
 
+  app.post("/api/staff/session", (req, _res, next) => {
+    req.headers.authorization = "Bearer " + workspaceToken(req);
+    next();
+  }, staff, (req, res) => res.json({ token: staffToken(req) }));
+  app.delete("/api/staff/session", (_req, res) => {
+    forgetWorkspace(res);
+    res.json({ ok: true });
+  });
   app.post("/api/logout", staff, async (req, res, next) => {
     try {
       await db.query("DELETE FROM sessions WHERE token = $1", [
@@ -464,6 +474,7 @@ export function createApp(db: DB) {
   });
 
   app.post("/api/staff/members/:id/scan", staff, async (req, res, next) => {
+    if (req.body.confirm !== true) { res.status(400).json({ error: "Confirm a paid qualifying purchase before recording credit" }); return; }
     const id = String(req.params.id), key = req.get("Idempotency-Key");
     if (!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(id) || !(await member(db, id))) {
       res.status(404).json({ error: "Invalid QR code. Please show a valid customer membership QR for this shop." }); return;

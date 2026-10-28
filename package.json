@@ -27,6 +27,9 @@
     "test:ui": "node tests/ui-smoke.mjs",
     "test:pwa": "node tests/pwa-smoke.mjs",
     "test:scanner": "node scripts/run-tests.mjs scanner",
+    "test:upgrade-browser": "node scripts/run-tests.mjs upgrade-browser",
+    "seed:development": "tsx scripts/seed-development.ts",
+    "pilot": "tsx src/pilot-server.ts",
     "wallet:check": "node scripts/check-google-wallet.mjs"
   },
   "dependencies": {
