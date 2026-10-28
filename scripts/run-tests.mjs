@@ -3,6 +3,9 @@ import { randomBytes } from "node:crypto";
 import { setTimeout as pause } from "node:timers/promises";
 const command = process.argv[2] || "unit";
 const flags =
+  command === "upgrade-browser"
+    ? ["tests/upgrade-browser.ts"]
+    :
   command === "browser"
     ? ["tests/browser-smoke.ts"]
     : command === "scanner"

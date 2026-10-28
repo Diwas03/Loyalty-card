@@ -12,6 +12,7 @@ export function hostedPool() {
 }
 export type HostedDB = Pick<pg.Pool, "query">;
 export async function readMember(db: HostedDB, id: string) {
+  await db.query("SELECT coffee.expire_member_rewards($1)", [id]);
   return (
     await db.query(
       "SELECT m.*,p.stamp_goal,p.name AS shop_name,p.color AS shop_color,p.card_title,p.tagline,p.reward_label,p.stamp_icon,p.card_style,p.logo_data,p.referrals_enabled,p.referral_reward_kind,p.referral_reward_amount,(SELECT count(*)::int FROM coffee.referrals r WHERE r.referrer_id=m.id) AS referred_count,(SELECT count(*)::int FROM coffee.referrals r WHERE r.referrer_id=m.id AND r.credited_at IS NOT NULL) AS credited_count FROM coffee.members m JOIN coffee.shops p ON p.id=m.shop_id WHERE m.id=$1",
@@ -35,7 +36,7 @@ export const publicMember = (m: any) => ({
     invited: m.referred_count || 0,
     credited: m.credited_count || 0,
   },
-  id: m.id,
+  id: m.card_token || m.id,
   name: m.name,
   stamps: m.stamps,
   rewards: m.rewards,

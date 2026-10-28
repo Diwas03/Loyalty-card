@@ -1,5 +1,7 @@
 # Loyalty · Multi-shop web wallet
 
+Upgrade work is tracked in [the evidence-based audit and checklist](docs/implementation-plan.md). See [upgrade setup and verification](docs/UPGRADE_SETUP.md) for the isolated seed, tests, additive migrations, rollback notes and honest integration status. P0/P1 remain incomplete; this branch is not a production release.
+
 ## Repository and local Git workflow
 
 The GitHub repository is [jigmesherabphuntsho/Loyaltycardv0](https://github.com/jigmesherabphuntsho/Loyaltycardv0). Run these commands from this project folder:
@@ -104,7 +106,7 @@ npm run backup
 npm run backup -- D:/WalletBackups/coffee.sqlite
 ```
 
-Do not disable the last enabled owner. The reserved username `legacy` cannot be created. Operator CLI commands require local access to the server's database; they are not public account-registration endpoints. In the UI staff can find customers and record coffees/redemptions. Customers join using their shop’s QR code. Only owners can customize the card, change the stamp goal or manually retry delivery jobs. Staff authentication uses an in-memory bearer token, with a one-use, 15-second sessionStorage handoff from sign-in that is immediately removed. Cookies never authenticate staff. Reloading, closing or restoring a workspace requires fresh sign-in; inactivity ends the screen session after 15 minutes and the server token expires after 30 minutes. Disabled/reset accounts lose access immediately.
+Do not disable the last enabled owner. The reserved username `legacy` cannot be created. Operator CLI commands require local access to the server's database; they are not public account-registration endpoints. In the UI staff can find customers and record coffees/redemptions. Customers join using their shop’s QR code. Only owners can customize the card, change the stamp goal or manually retry delivery jobs. Staff requests use an in-memory bearer token, with a one-use, 15-second sessionStorage sign-in handoff. A scoped HttpOnly cookie can restore the workspace after refresh through a same-origin JSON endpoint; it never directly authenticates a staff action. The server session expires after 30 minutes, inactivity closes an open workspace after 15 minutes, and explicit logout revokes access. Disabled/reset accounts lose access immediately.
 
 Backups contain customer IDs, password hashes, session tokens and Apple pass tokens: restrict access and never commit or share them. Restore only with server/worker stopped, preserve the current files first, and remove stale WAL/SHM sidecars from the database being replaced. Test restores on a separate private copy before relying on a backup.
 

@@ -1,5 +1,7 @@
 import { cardDesign, validLogo } from "./card-design.js";
 import { staffToken } from "./staff-session.js";
+import { teamRoutes } from "./team-routes.js";
+import { rememberWorkspace, forgetWorkspace, workspaceToken } from "./session-recovery.js";
 import express from "express";
 import helmet from "helmet";
 import cookieParser from "cookie-parser";
@@ -70,13 +72,20 @@ export function createHostedApp(
         staffToken(req);
       const row = (
         await db.query(
-          "SELECT s.username,a.role,a.enabled,coalesce(p.shop_id,'default') AS shop_id FROM coffee.sessions s LEFT JOIN coffee.staff_accounts a USING(username) LEFT JOIN coffee.staff_profiles p ON p.username=s.username WHERE token_hash=$1 AND expires>$2",
+          `SELECT s.username,a.enabled,b.role AS business_role,b.enabled AS membership_enabled,
+            coalesce(c.shop_id,p.shop_id,'default') AS shop_id,
+            coalesce(c.location_id,coalesce(p.shop_id,'default')||':main') AS location_id
+            FROM coffee.sessions s LEFT JOIN coffee.staff_accounts a USING(username)
+            LEFT JOIN coffee.staff_profiles p ON p.username=s.username
+            LEFT JOIN coffee.workspace_context c ON c.token_hash=s.token_hash
+            LEFT JOIN coffee.business_memberships b ON b.username=s.username AND b.shop_id=coalesce(c.shop_id,p.shop_id,'default')
+            WHERE s.token_hash=$1 AND expires>$2`,
           [digest(token), Date.now()],
         )
       ).rows[0];
       if (
         !row ||
-        (row.username !== "legacy" && !row.enabled) ||
+        (row.username !== "legacy" && (!row.enabled || !row.membership_enabled)) ||
         (row.username === "legacy" &&
           (await db.query("SELECT 1 FROM coffee.staff_accounts LIMIT 1"))
             .rowCount)
@@ -86,12 +95,15 @@ export function createHostedApp(
       }
       res.locals.actor = row.username;
       res.locals.shopId = row.shop_id;
-      res.locals.role = row.username === "legacy" ? "owner" : row.role;
+      res.locals.locationId = row.location_id;
+      res.locals.businessRole = row.username === "legacy" ? "owner" : row.business_role;
+      res.locals.role = res.locals.businessRole === "cashier" ? "staff" : res.locals.businessRole;
       next();
     } catch (e) {
       next(e);
     }
   };
+  teamRoutes(app,db,staff);
   async function allowed(
     req: express.Request,
     key: string,
@@ -192,16 +204,35 @@ export function createHostedApp(
       return;
     }
     const token = randomBytes(32).toString("hex");
+    // Operator-created legacy accounts may not have a profile yet.
+    await db.query(`WITH added AS (INSERT INTO coffee.business_memberships(username,shop_id,role)
+      SELECT a.username,coalesce(p.shop_id,'default'),CASE WHEN a.role='owner' THEN 'owner' ELSE 'cashier' END
+      FROM coffee.staff_accounts a LEFT JOIN coffee.staff_profiles p USING(username) WHERE a.username=$1 ON CONFLICT DO NOTHING RETURNING username,shop_id)
+      INSERT INTO coffee.location_grants SELECT username,shop_id,shop_id||':main' FROM added ON CONFLICT DO NOTHING`,[username]);
+    const workspace=(await db.query(`SELECT b.shop_id,l.id AS location_id FROM coffee.business_memberships b JOIN coffee.locations l ON l.shop_id=b.shop_id AND l.active LEFT JOIN coffee.staff_profiles p USING(username)
+      WHERE b.username=$1 AND b.enabled AND (b.role='owner' OR EXISTS(SELECT 1 FROM coffee.location_grants g WHERE g.username=b.username AND g.shop_id=b.shop_id AND g.location_id=l.id))
+      ORDER BY (b.shop_id=coalesce(p.shop_id,'default')) DESC,(l.id=b.shop_id||':main') DESC,b.shop_id,l.id LIMIT 1`,[username])).rows[0];
+    if(username!=="legacy"&&!workspace){res.status(403).json({error:"No enabled business/location membership. Contact an owner."});return;}
     await db.query("INSERT INTO coffee.sessions VALUES($1,$2,$3)", [
       digest(token),
       username,
       Date.now() + 30 * 60000,
     ]);
+    if(workspace) await db.query("INSERT INTO coffee.workspace_context VALUES($1,$2,$3)",[digest(token),workspace.shop_id,workspace.location_id]);
     res.clearCookie("staff", { path: "/" });
+    rememberWorkspace(res, token);
     res.json({ ok: true, token, expiresIn: 1800 });
   });
+  app.post("/api/staff/session", (req, _res, next) => {
+    req.headers.authorization = "Bearer " + workspaceToken(req);
+    next();
+  }, staff, (req, res) => res.json({ token: staffToken(req) }));
+  app.delete("/api/staff/session", (_req, res) => {
+    forgetWorkspace(res);
+    res.json({ ok: true });
+  });
   app.get("/api/staff/me", staff, (_req, res) =>
-    res.json({ username: res.locals.actor, role: res.locals.role, accountsEnabled: true, scanStamping: true, businessDashboard: true, shopId: res.locals.shopId }),
+    res.json({ username: res.locals.actor, role: res.locals.role, businessRole:res.locals.businessRole, locationId:res.locals.locationId, accountsEnabled: true, scanStamping: true, businessDashboard: true, pilotLedger: true, shopId: res.locals.shopId }),
   );
   app.post("/api/logout", staff, async (req, res) => {
     await db.query("DELETE FROM coffee.sessions WHERE token_hash=$1", [
@@ -231,8 +262,38 @@ export function createHostedApp(
   const shopId = (value: unknown) => typeof value === "string" && value ? value : "default";
   const shopToken = (token: string, shop: string) => digest(shop === "default" ? token : token + ":" + shop);
   async function shopInfo(id: string) {
-    return (await db.query("SELECT id,name,color,stamp_goal,card_title,tagline,reward_label,stamp_icon,card_style,logo_data FROM coffee.shops WHERE id=$1", [id])).rows[0];
+    return (await db.query("SELECT id,name,color,stamp_goal,card_title,tagline,reward_label,stamp_icon,card_style,logo_data,currency,timezone,country,reward_expiry_days FROM coffee.shops WHERE id=$1", [id])).rows[0];
   }
+  async function privateMember(token: string) {
+    const found = (await db.query("SELECT id FROM coffee.members WHERE card_token=$1", [token])).rows[0];
+    return found ? readMember(db, found.id) : undefined;
+  }
+  app.post("/api/members/:id/transfer", async (req, res) => {
+    if (!(await allowed(req, "card-transfer", 10, 60000))) { res.status(429).json({ error: "Too many requests. Try again in a minute." }); return; }
+    const m = await privateMember(String(req.params.id));
+    if (!m) { res.status(404).json({ error: "Card not found" }); return; }
+    const token = randomBytes(32).toString("hex");
+    await db.query("INSERT INTO coffee.card_transfers VALUES($1,$2,$3) ON CONFLICT(member_id) DO UPDATE SET token_hash=excluded.token_hash,expires=excluded.expires", [m.id,digest(token),Date.now()+600000]);
+    res.json({ transferUrl: "/recover.html#" + token, expiresIn: 600 });
+  });
+  app.post("/api/recover", async (req, res) => {
+    if (!(await allowed(req, "card-recover", 10, 60000))) { res.status(429).json({ error: "Too many attempts. Try again in a minute." }); return; }
+    if (typeof req.body.token !== "string" || !/^[a-f0-9]{64}$/.test(req.body.token)) { res.status(400).json({ error: "Invalid transfer link" }); return; }
+    const transfer = (await db.query("DELETE FROM coffee.card_transfers WHERE token_hash=$1 AND expires>$2 RETURNING member_id", [digest(req.body.token),Date.now()])).rows[0];
+    if (!transfer) { res.status(410).json({ error: "This transfer link expired or was already used. Create a new link from your original card." }); return; }
+    const m = await readMember(db,transfer.member_id);
+    const browserToken=validJoinToken(req.cookies.coffee_customer) ? req.cookies.coffee_customer : randomBytes(32).toString("hex");
+    await db.query("INSERT INTO coffee.customer_enrollments(token_hash,member_id,created_at) VALUES($1,$2,$3) ON CONFLICT DO NOTHING",[shopToken(browserToken,m.shop_id),m.id,Date.now()]);
+    res.cookie("coffee_customer",browserToken,{...cookie,maxAge:365*24*3600000});
+    res.json({ customerUrl: "/?member=" + encodeURIComponent(m.card_token || m.id) });
+  });
+  app.post("/api/staff/members/:id/rotate-link", staff, async (req, res) => {
+    if (res.locals.role !== "owner") { res.status(403).json({ error: "Owner access required" }); return; }
+    if (req.body.confirm !== true) { res.status(400).json({ error: "Confirm invalidating the previous private link" }); return; }
+    const token = (await db.query("WITH changed AS (UPDATE coffee.members SET card_token=gen_random_uuid()::text WHERE id=$1 AND shop_id=$2 RETURNING id,card_token), revoked AS (DELETE FROM coffee.card_transfers t USING changed c WHERE t.member_id=c.id) SELECT card_token FROM changed", [String(req.params.id),res.locals.shopId])).rows[0]?.card_token;
+    if (!token) { res.status(404).json({ error: "Membership not found" }); return; }
+    res.json({ customerUrl: "/?member=" + token });
+  });
   app.get("/api/shop", async (req, res) => {
     const shop = await shopInfo(shopId(req.query.shop));
     if (!shop) { res.status(404).json({ error: "Shop not found" }); return; }
@@ -245,6 +306,53 @@ export function createHostedApp(
     res.type("png").send(await QRCode.toBuffer(baseUrl() + "/join.html?shop=" + encodeURIComponent(shop.id), { width: 720, margin: 4 }));
   });
   app.get("/api/staff/shop", staff, async (_req, res) => res.json(await shopInfo(res.locals.shopId)));
+  app.post("/api/staff/region", staff, async (req, res) => {
+    if (res.locals.role !== "owner") { res.status(403).json({ error: "Owner access required" }); return; }
+    const { currency, timezone, country } = req.body;
+    try {
+      if (typeof currency !== "string" || !/^[A-Z]{3}$/.test(currency) || typeof country !== "string" || !/^[A-Z]{2}$/.test(country) || typeof timezone !== "string" || timezone.length>80) throw Error();
+      new Intl.DateTimeFormat("en", { timeZone: timezone }).format();
+      new Intl.NumberFormat("en", { style: "currency", currency }).format(0);
+    } catch { res.status(400).json({ error: "Use an ISO currency/country code and an IANA timezone, for example BTN, BT, Asia/Thimphu" }); return; }
+    await db.query("UPDATE coffee.shops SET currency=$1,timezone=$2,country=$3 WHERE id=$4", [currency,timezone,country,res.locals.shopId]);
+    res.json({ currency, timezone, country, currencyLabel: currency === "BTN" ? "Nu." : currency });
+  });
+  app.post("/api/staff/reward-expiry", staff, async (req, res) => {
+    if (res.locals.role!=="owner") { res.status(403).json({error:"Owner access required"}); return; }
+    const days=req.body.days;
+    if(days!==null && (!Number.isInteger(days)||days<1||days>3650)) { res.status(400).json({error:"Choose 1–3650 days, or no expiry"}); return; }
+    await db.query("UPDATE coffee.shops SET reward_expiry_days=$1 WHERE id=$2",[days,res.locals.shopId]);
+    res.json({days, appliesTo:"New rewards only. Existing issued rewards retain their promised expiry."});
+  });
+  app.post("/api/staff/members/:id/adjustment", staff, async (req, res) => {
+    if (!["owner","manager"].includes(res.locals.role)) { res.status(403).json({ error: "Owner or manager access required" }); return; }
+    const key = req.get("Idempotency-Key");
+    if (!key || !/^[a-zA-Z0-9-]{16,100}$/.test(key) || !Number.isInteger(req.body.delta) || typeof req.body.reason !== "string" || req.body.confirm !== true) {
+      res.status(400).json({ error: "Provide a whole stamp adjustment, reason, confirmation and request key" }); return;
+    }
+    try {
+      const result = await db.query("SELECT coffee.adjust_progress($1,$2,$3,$4,$5,$6) AS result", [res.locals.shopId, String(req.params.id), req.body.delta, req.body.reason, key, res.locals.actor]);
+      res.json(result.rows[0].result);
+    } catch { res.status(409).json({ error: "Adjustment rejected. Check membership, reason, progress bounds and request key." }); }
+  });
+  app.get("/api/staff/reports", staff, async (_req, res) => {
+    if (!["owner","manager"].includes(res.locals.role)) { res.status(403).json({ error: "Owner or manager access required" }); return; }
+    await db.query("SELECT coffee.expire_member_rewards(id) FROM coffee.members WHERE shop_id=$1",[res.locals.shopId]);
+    const summary = (await db.query(`SELECT count(*) FILTER(WHERE kind='purchase')::int AS qualifying_visits,
+      count(DISTINCT member_id) FILTER(WHERE kind='purchase')::int AS visiting_members,
+      coalesce(sum(greatest(reward_delta,0)) FILTER(WHERE kind<>'opening'),0)::int AS rewards_issued,
+      count(*) FILTER(WHERE kind='redeem')::int AS rewards_redeemed,
+      count(*) FILTER(WHERE kind='adjustment')::int AS corrections
+      FROM coffee.ledger WHERE shop_id=$1`, [res.locals.shopId])).rows[0];
+    const balances = (await db.query("SELECT count(*)::int AS members,coalesce(sum(rewards),0)::int AS outstanding_rewards FROM coffee.members WHERE shop_id=$1", [res.locals.shopId])).rows[0];
+    res.json({ ...summary, ...balances, period: "Since ledger migration; opening balances excluded from earned totals", trackedSales: null, salesLabel: "Not tracked", definitions: "Qualifying visits count confirmed purchase events. Visiting members counts distinct purchasers. Referral rewards are included in issued rewards. Corrections do not count as visits." });
+  });
+  app.get("/api/staff/customers.csv", staff, async (_req, res) => {
+    if (res.locals.role !== "owner") { res.status(403).json({ error: "Owner access required" }); return; }
+    const rows = (await db.query("SELECT id,name,stamps,rewards FROM coffee.members WHERE shop_id=$1 ORDER BY id", [res.locals.shopId])).rows;
+    const cell = (value: unknown) => '"' + String(value).replace(/^[=+@\-\t\r]/, "'$&").replaceAll('"', '""') + '"';
+    res.type("text/csv").attachment("customers.csv").send(["id,name,stamps,rewards", ...rows.map(row => [row.id,row.name,row.stamps,row.rewards].map(cell).join(","))].join("\r\n"));
+  });
   app.post("/api/staff/shop", staff, async (req, res) => {
     if (res.locals.role !== "owner") { res.status(403).json({ error: "Owner access required" }); return; }
     const name = typeof req.body.name === "string" ? req.body.name.trim() : "";
@@ -359,9 +467,9 @@ export function createHostedApp(
       const m = await readMember(db, raw.id);
       res.json({
         member: publicMember(m),
-        customerUrl: "/?member=" + encodeURIComponent(m.id),
+        customerUrl: "/?member=" + encodeURIComponent(m.card_token || m.id),
         walletUrl: readiness().google.enabled
-          ? "/wallet/google/" + encodeURIComponent(m.id)
+          ? "/wallet/google/" + encodeURIComponent(m.card_token || m.id)
           : null,
       });
     } catch (error) {
@@ -369,22 +477,25 @@ export function createHostedApp(
     }
   });
   app.get("/api/members/:id", async (req, res) => {
-    const m = await readMember(db, String(req.params.id));
+    const m = await privateMember(String(req.params.id));
     if (!m) {
       res.status(404).json({ error: "Membership not found" });
       return;
     }
-    res.json(publicMember(m));
+    const vouchers=(await db.query("SELECT id,label,status,issued_at,expires_at,changed_at FROM coffee.issued_rewards WHERE member_id=$1 ORDER BY id DESC LIMIT 100",[m.id])).rows;
+    const history=(await db.query("SELECT kind,created_at,result->>'reason' AS reason FROM coffee.operations WHERE member_id=$1 ORDER BY created_at DESC,key LIMIT 30",[m.id])).rows;
+    res.json({ ...publicMember(m), vouchers, history, transferEnabled: true });
   });
   app.get("/api/members/:id/qr", async (req, res) => {
-    if (!(await readMember(db, String(req.params.id)))) {
+    const m = await privateMember(String(req.params.id));
+    if (!m) {
       res.sendStatus(404);
       return;
     }
     res
       .type("png")
       .send(
-        await QRCode.toBuffer(String(req.params.id), { width: 320, margin: 3 }),
+        await QRCode.toBuffer(m.id, { width: 320, margin: 3 }),
       );
   });
   app.get("/api/staff/members", staff, async (req, res) => {
@@ -420,11 +531,14 @@ export function createHostedApp(
     ]);
     res.json({
       ...publicMember(m),
+      id: m.id,
+      privateCardToken: m.card_token,
       history: history.rows,
       deliveries: deliveries.rows,
     });
   });
   app.post("/api/staff/members/:id/scan", staff, async (req, res, next) => {
+    if (req.body.confirm !== true) { res.status(400).json({ error: "Confirm a paid qualifying purchase before recording credit" }); return; }
     const id = String(req.params.id), key = req.get("Idempotency-Key");
     const member = await readMember(db, id);
     if (!member || member.shop_id !== res.locals.shopId) { res.status(404).json({ error: "Invalid QR code. Please show a valid customer membership QR for this shop." }); return; }
@@ -437,13 +551,13 @@ export function createHostedApp(
       return;
     }
     try {
-      const result = (await db.query("SELECT coffee.scan_purchase($1,$2,$3) AS result", [id, key, res.locals.actor])).rows[0].result;
+      const result = (await db.query("SELECT coffee.staff_mutate($1,'scan',$2,$3,$4,$5) AS result", [id, key, res.locals.actor,res.locals.shopId,res.locals.locationId])).rows[0].result;
       res.json(result);
       if (result.awarded) background(deliverHosted(db, id));
     } catch (error) {
       const message = error instanceof Error ? error.message : "";
-      if (["Membership not found", "Idempotency key already used for another action"].includes(message)) {
-        res.status(message === "Membership not found" ? 404 : 409).json({ error: message });
+      if (["Membership not found", "Location access denied", "Idempotency key already used for another action"].includes(message)) {
+        res.status(message === "Membership not found" ? 404 : message === "Location access denied" ? 403 : 409).json({ error: message });
       } else next(error);
     }
   });
@@ -468,17 +582,20 @@ export function createHostedApp(
     }
     try {
       const result = (
-        await db.query("SELECT coffee.mutate_member($1,$2,$3,$4) AS result", [
+        await db.query("SELECT coffee.staff_mutate($1,$2,$3,$4,$5,$6) AS result", [
           id,
           action,
           key,
           res.locals.actor,
+          res.locals.shopId,
+          res.locals.locationId,
         ])
       ).rows[0].result;
       res.json(result);
       background(deliverHosted(db, id));
     } catch (e) {
       const reason = e instanceof Error ? e.message : "";
+      if(reason==="Location access denied"){res.status(403).json({error:reason});return;}
       res.status(409).json({
         error: [
           "No reward available",
@@ -553,7 +670,7 @@ export function createHostedApp(
       res.status(429).send("Try again shortly");
       return;
     }
-    const m = await readMember(db, String(req.params.id));
+    const m = await privateMember(String(req.params.id));
     if (!m) {
       res.sendStatus(404);
       return;

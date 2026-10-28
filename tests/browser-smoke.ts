@@ -46,8 +46,10 @@ try {
     await page.locator("#tab-scan").click();
     await page.locator("#scan").click();
     await page.evaluate(id => (window as any).scanTestFrame(id), new URL(customer.url()).searchParams.get("member"));
+    await page.locator("#purchase").waitFor({state:"visible"});
+    await page.locator("#purchase").click();
   };
-  assert.equal(await page.locator("#purchase").count(), 0);
+  assert.equal(await page.locator("#purchase").count(), 1);
   let loseOnce = true;
   await page.route("**/api/staff/members/*/scan", async (route) => {
     if (loseOnce) {
@@ -59,7 +61,7 @@ try {
   await scan();
   await page.waitForFunction(() =>
     document
-      .querySelector("#message")
+      .querySelector("#customer-outcome")
       ?.textContent?.includes("request key is retained"),
   );
   await scan();
@@ -96,7 +98,7 @@ try {
   await page.locator("#redeem").click();
   await page.waitForFunction(() =>
     document
-      .querySelector("#message")
+      .querySelector("#customer-outcome")
       ?.textContent?.startsWith("Request rejected:"),
   );
   assert.equal(

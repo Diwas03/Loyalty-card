@@ -73,7 +73,7 @@ test("Apple pass ZIP, identity, barcode, manifest and CMS signature using synthe
     const { rows } = await db.query("SELECT * FROM members LIMIT 1");
     const m = rows[0] as Member;
     writeFileSync(join(dir, "pass.pkpass"), applePass(m));
-    execFileSync("python3", [
+    execFileSync(process.env.PYTHON_PATH || "python3", [
       "-c",
       `import zipfile,hashlib,json,sys
 p=zipfile.ZipFile(sys.argv[1]);manifest=json.loads(p.read('manifest.json'))
@@ -113,7 +113,7 @@ p.extractall(sys.argv[2])`,
     const updated = updatedRows[0] as Member;
     writeFileSync(join(dir, "updated.pkpass"), applePass(updated));
     const updatedJson = JSON.parse(
-      execFileSync("python3", [
+      execFileSync(process.env.PYTHON_PATH || "python3", [
         "-c",
         "import zipfile,sys;print(zipfile.ZipFile(sys.argv[1]).read('pass.json').decode())",
         join(dir, "updated.pkpass"),
