@@ -2,6 +2,11 @@
 
 Production URL: **https://loyalty-card-pi.vercel.app**.
 
+If `/healthz` reports `DATABASE_SCHEMA_FILE_MISSING` after an upgrade, the
+deployment is missing a SQL setup asset; this does not mean the existing
+Supabase database must be replaced. Deploy the version whose `vercel.json`
+includes all six files read by `installHosted`, then retry `/healthz`.
+
 ## Create staff accounts in the website
 
 Open `/register.html` to create a shop with its name, your name, a globally unique

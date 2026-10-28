@@ -5,7 +5,7 @@
   "functions": {
     "api/index.ts": {
       "maxDuration": 60,
-      "includeFiles": "supabase/{schema,shops,referrals}.sql"
+      "includeFiles": "supabase/{schema,shops,referrals,pilot,rewards,tenancy}.sql"
     }
   },
   "rewrites": [
