@@ -1,5 +1,22 @@
 # Loyalty · Multi-shop web wallet
 
+## Repository and local Git workflow
+
+The GitHub repository is [jigmesherabphuntsho/Loyaltycardv0](https://github.com/jigmesherabphuntsho/Loyaltycardv0). Run these commands from this project folder:
+
+```sh
+git pull --ff-only origin main
+npm ci
+# Make changes, then validate and review them:
+npm run typecheck
+git diff
+git add <files-you-changed>
+git commit -m "Describe your change"
+git push origin main
+```
+
+Git uses Git Credential Manager for GitHub authentication; complete its sign-in prompt if requested. Keep `.env`, `data/`, and `secrets/` private; these paths are ignored by Git.
+
 **Quick local start:** with Node 24 and Docker Desktop running, use `npm ci` then `npm run local`. In another terminal, run `npm run local:staff -- owner owner` to choose your password. See [Windows run instructions](docs/RUN_LOCALLY.md). This is an isolated local database; live Vercel/Supabase setup remains separate.
 
 
