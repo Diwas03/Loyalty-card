@@ -1,0 +1,44 @@
+import {test} from "node:test";
+import assert from "node:assert/strict";
+import {randomBytes,randomUUID} from "node:crypto";
+import pg from "pg";
+import {mkdtempSync,writeFileSync,readFileSync,statSync,rmSync} from "node:fs";
+import {tmpdir} from "node:os";
+import {join} from "node:path";
+import request from "supertest";
+import {memDb} from "./helpers.js";
+import {initializeHosted,verifyHostedSchema} from "../src/hosted-runtime.js";
+import {backupPilot,restorePilot} from "../src/pilot-backup.js";
+import {createHostedApp} from "../src/hosted-app.js";
+test("synthetic private backup restores memberships, promised vouchers, immutable audit and app behavior; sessions are revoked",async()=>{
+ const source=await memDb();const admin=new pg.Pool({connectionString:process.env.TEST_DATABASE_URL});
+ const directory=mkdtempSync(join(tmpdir(),"loyalty-private-backup-"));
+ const name="coffee_restore_"+randomBytes(8).toString("hex");let restored:pg.Pool|undefined;
+ try{
+  await initializeHosted(source);await verifyHostedSchema(source);
+  const app=createHostedApp(source),credentials={username:"restore-owner",fullName:"Owner",shopName:"Restore shop",password:"restore-test-password"};
+  await request(app).post("/api/setup/owner").send(credentials).expect(201);
+  const login=(await request(app).post("/api/login").send(credentials).expect(200)).body;
+  const m=(await source.query("SELECT coffee.enroll_customer('Synthetic member',NULL,'default') AS m")).rows[0].m;
+  await source.query("UPDATE coffee.shops SET stamp_goal=2,reward_label='Promised reward',reward_expiry_days=30 WHERE id='default'");
+  for(let i=0;i<2;i++)await source.query("SELECT coffee.mutate_member($1,'purchase',$2,'restore-owner')",[m.id,randomUUID()]);
+  const file=join(directory,"synthetic-private.json");
+  writeFileSync(file,JSON.stringify(await backupPilot(source)),{mode:0o600,flag:"wx"});
+  assert.equal(statSync(file).mode & 0o777,0o600);
+  const snapshot=JSON.parse(readFileSync(file,"utf8"));
+  await admin.query(`CREATE DATABASE "${name}"`);const url=new URL(process.env.TEST_DATABASE_URL!);url.pathname='/'+name;
+  restored=new pg.Pool({connectionString:url.toString()});await initializeHosted(restored);
+  const evidence=await restorePilot(restored,snapshot);assert.equal(evidence.members,1);assert.equal(evidence.sessionsRevoked,true);
+  assert.equal((await restored.query("SELECT label FROM coffee.issued_rewards")).rows[0].label,'Promised reward');
+  assert.equal((await restored.query("SELECT count(*)::int AS n FROM coffee.ledger")).rows[0].n,2);
+  const restoredApp=createHostedApp(restored);
+  await request(restoredApp).get('/api/staff/me').set('Authorization','Bearer '+login.token).expect(401);
+  const fresh=(await request(restoredApp).post('/api/login').send(credentials).expect(200)).body;
+  const staff=request.agent(restoredApp).set('Authorization','Bearer '+fresh.token);
+  await staff.post(`/api/staff/members/${m.id}/redeem`).set('Idempotency-Key',randomUUID()).send({confirm:true}).expect(200);
+  const card=(await request(restoredApp).get('/api/members/'+m.id).expect(200)).body;
+  assert.equal(card.rewards,0);assert.equal(card.vouchers[0].status,'redeemed');
+  await assert.rejects(restored.query("UPDATE coffee.ledger SET reason='tamper'"),/immutable/);
+  await assert.rejects(restorePilot(restored,snapshot),/contains accounts/);
+ }finally{await source.end();if(restored)await restored.end();await admin.query(`DROP DATABASE IF EXISTS "${name}"`);await admin.end();rmSync(directory,{recursive:true,force:true});}
+});
