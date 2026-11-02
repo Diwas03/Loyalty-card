@@ -1,3 +1,4 @@
+import { domainToASCII } from "node:url";
 import { createHash } from "node:crypto";
 import { databaseAliases, databaseUrl } from "./database-config.js";
 
@@ -11,10 +12,20 @@ export function requireLocalDatabase(value: string | undefined, purpose: string)
 }
 function identity(value: string): string {
   const u = new URL(value);
+  if (!["postgres:","postgresql:"].includes(u.protocol) || !u.hostname || !u.username) throw Error("Invalid PostgreSQL identity");
   if ([...u.searchParams.keys()].some(key => !["ssl","sslmode","sslcert","sslkey","sslrootcert","sslnegotiation","uselibpqcompat"].includes(key)) || u.hash) throw Error("Unsupported database identity parameters");
-  return [u.hostname, u.port || "5432", u.pathname, u.username].join("|");
+  const user = decodeURIComponent(u.username);
+  const database = decodeURIComponent(u.pathname.slice(1)) || user;
+  // PostgreSQL decodes URI credentials/database names; DNS names are case-insensitive.
+  // Fingerprints must identify the destination, not a particular URL spelling.
+  const hostname = domainToASCII(decodeURIComponent(u.hostname)).toLowerCase().replace(/\.$/, "");
+  if (!hostname) throw Error("Invalid database host");
+  return [hostname, u.port || "5432", database, user].join("|");
 }
-export function databaseIdentityHash(value: string) { return createHash("sha256").update(identity(value)).digest("hex"); }
+export function databaseIdentityHash(value: string) {
+  try { return createHash("sha256").update(identity(value)).digest("hex"); }
+  catch { throw Error("Database identity requires a valid PostgreSQL URI without connection overrides"); }
+}
 /** Must run before opening a connection, including during a preview cold start. */
 export function runtimeEnvironment(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
   if (env.VERCEL_ENV !== "preview") return env;
@@ -24,7 +35,7 @@ export function runtimeEnvironment(env: NodeJS.ProcessEnv = process.env): NodeJS
   let stagingIdentity: string;
   try {
     const parsed = new URL(staging);
-    if (!["postgres:", "postgresql:"].includes(parsed.protocol) || !parsed.hostname || parsed.search || parsed.hash) throw Error();
+    if (!["postgres:", "postgresql:"].includes(parsed.protocol) || !parsed.hostname || !parsed.username || !parsed.pathname.slice(1) || parsed.search || parsed.hash) throw Error();
     stagingIdentity = identity(staging);
     if (databaseIdentityHash(staging) === env.PRODUCTION_DATABASE_IDENTITY_SHA256) throw Error();
     if (databaseAliases.some(key => env[key] && identity(env[key]!) !== stagingIdentity)) throw Error();
@@ -32,7 +43,9 @@ export function runtimeEnvironment(env: NodeJS.ProcessEnv = process.env): NodeJS
   } catch { throw Error("Preview must use a distinct verified database identity and contain no production aliases or provider credentials"); }
   const result = { ...env };
   for (const key of databaseAliases) delete result[key];
-  result.DATABASE_URL = staging;
+  const explicit = new URL(staging);
+  explicit.port ||= "5432"; // Do not let inherited PGPORT select a different destination.
+  result.DATABASE_URL = explicit.toString();
   return result;
 }
 export function requireLocalOperator(purpose: string, env: NodeJS.ProcessEnv = process.env) {

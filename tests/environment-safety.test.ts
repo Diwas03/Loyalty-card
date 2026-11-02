@@ -20,3 +20,26 @@ test("operator guards reject production, non-disposable databases and URL parame
  for(const value of ["postgres://localhost/postgres","postgres://production.invalid/coffee_test","postgres://localhost/coffee_test?host=production.invalid","https://localhost/coffee_test",undefined]) assert.throws(()=>requireLocalDatabase(value,"test"));
  for(const name of ["coffee_test","coffee_dev","coffee_case_abc123","coffee_restore_abc123"]) assert.ok(requireLocalDatabase("postgres://127.0.0.1/"+name,"test"));
 });
+
+test("database identity fingerprints reject equivalent production URI spellings",()=>{
+ const original="postgresql://postgres:one@production.invalid:5432/postgres";
+ const fingerprint=databaseIdentityHash(original);
+ const equivalents=[
+  "postgres://%70ostgres:another@PRODUCTION.INVALID:5432/post%67res",
+  "postgres://postgres:another@%70roduction.invalid:5432/postgres",
+  "postgresql://postgres:another@production.invalid./postgres",
+  "postgres://postgres:another@production.invalid",
+ ];
+ for(const staging of equivalents){
+  assert.equal(databaseIdentityHash(staging),fingerprint);
+  assert.throws(()=>runtimeEnvironment({VERCEL_ENV:"preview",APP_ENV:"staging",EXTERNAL_DELIVERY_ENABLED:"false",STAGING_DATABASE_URL:staging,PRODUCTION_DATABASE_IDENTITY_SHA256:fingerprint}),/distinct/);
+ }
+ const result=runtimeEnvironment({VERCEL_ENV:"preview",APP_ENV:"staging",EXTERNAL_DELIVERY_ENABLED:"false",STAGING_DATABASE_URL:"postgres://test:separate@staging.invalid/staging",PRODUCTION_DATABASE_IDENTITY_SHA256:fingerprint});
+ assert.equal(new URL(result.DATABASE_URL!).port,"5432");
+});
+
+test("invalid identity errors do not echo connection details",()=>{
+ for(const value of ["invalid confidential-credential", "https://user:confidential-credential@production.invalid/project", "postgres://user:confidential-credential@production.invalid/db?host=elsewhere"]){
+  assert.throws(()=>databaseIdentityHash(value),error=>error instanceof Error && !JSON.stringify(error).includes("confidential-credential") && !error.message.includes("confidential-credential"));
+ }
+});
