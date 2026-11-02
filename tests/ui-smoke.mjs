@@ -31,6 +31,9 @@ try {
   const page = await context.newPage();
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
+  const openSections = async () => {
+    if (!(await page.locator('#section-navigation').evaluate(element => element.open))) await page.locator('#section-toggle').click();
+  };
   for (const width of [375, 768, 1440]) {
     await page.setViewportSize({ width, height: 1000 });
     for (const [name, path] of Object.entries({ business: '/business/', home: '/', card: `/?member=${id}`, join: '/join.html?shop=default', login: '/business/login.html', register: '/business/register.html', staff: '/business/dashboard.html#customers', poster: '/shop.html?shop=default' })) {
@@ -43,14 +46,16 @@ try {
       if (name === 'staff') await page.locator('#customers .customer-row').first().waitFor();
       if (name === 'staff') {
         for (const tab of ['overview', 'customers', 'scan', 'design', 'referrals', 'team']) {
+          await openSections();
           await page.locator('#tab-' + tab).click();
           assert.equal(await page.locator('#panel-' + tab).isVisible(), true);
           assert.equal(await page.locator('#tab-' + tab).getAttribute('aria-selected'), 'true');
           await page.screenshot({ path: `/tmp/loyalty-ui/dashboard-${tab}-${width}.png`, fullPage: true });
           assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), `${tab}: overflow at ${width}`);
         }
+        await openSections();
         await page.locator('#tab-customers').focus();
-        await page.keyboard.press('ArrowRight');
+        await page.keyboard.press(await page.locator('.business-tabs').getAttribute('aria-orientation') === 'vertical' ? 'ArrowDown' : 'ArrowRight');
         assert.equal(await page.locator('#tab-scan').getAttribute('aria-selected'), 'true');
         await page.locator('#tab-customers').click();
       }
@@ -70,7 +75,7 @@ try {
   await page.goto(base + '/business/dashboard.html#customers');
   await page.locator('#customers .customer-row').first().click();
   await page.waitForFunction(() => document.querySelector('#customer-name').textContent === 'Alex Morgan');
-  assert.equal(await page.locator('#purchase').count(), 0);
+  assert.equal(await page.locator('#purchase').isEnabled(), true);
   assert.equal(await page.locator('#redeem').isEnabled(), true);
   assert.equal(await page.locator('details.delivery-panel').getAttribute('open'), null);
   assert.deepEqual(errors, []);

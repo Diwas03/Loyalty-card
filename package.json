@@ -30,7 +30,11 @@
     "test:upgrade-browser": "node scripts/run-tests.mjs upgrade-browser",
     "seed:development": "tsx scripts/seed-development.ts",
     "pilot": "tsx src/pilot-server.ts",
-    "wallet:check": "node scripts/check-google-wallet.mjs"
+    "wallet:check": "node scripts/check-google-wallet.mjs",
+    "backup:pilot": "tsx scripts/pilot-backup.ts backup",
+    "restore:pilot": "tsx scripts/pilot-backup.ts restore",
+    "pilot:invite": "tsx scripts/pilot-invite.ts",
+    "verify:pilot": "node scripts/verify-pilot.mjs"
   },
   "dependencies": {
     "@vercel/functions": "^3.10.1",

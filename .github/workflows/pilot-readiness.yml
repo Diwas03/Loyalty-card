@@ -1,0 +1,54 @@
+name: Pilot readiness
+on:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: pilot-readiness-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  isolated-checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: disposable-ci-only
+          POSTGRES_DB: coffee_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgresql://postgres:disposable-ci-only@127.0.0.1:5432/coffee_test
+      APP_ENV: test
+      EXTERNAL_DELIVERY_ENABLED: 'false'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Locate installed browser
+        run: node --input-type=module -e 'import {chromium} from "playwright"; import {appendFileSync} from "node:fs"; appendFileSync(process.env.GITHUB_ENV, "CHROMIUM_PATH="+chromium.executablePath()+"\n")'
+      - run: npm run typecheck
+      - run: npm run build
+      - run: npm test
+      - run: npm run test:hosted
+      - run: npm run test:browser
+      - run: npm run test:scanner
+      - run: npm run test:upgrade-browser
+      - run: npm run test:ui
+      - run: npm run test:pwa
+    # No environment bindings, deployment steps, write permissions, production
+    # secrets, pull_request_target, or uploads of private screenshots/backups.
