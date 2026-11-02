@@ -33,3 +33,8 @@ Preserve explicit confirmation (scan/cancel earns nothing), supported progress c
 6. An authorized DB operator applies the reviewed migration set transactionally and verifies it. Deploy the reviewed application separately. Check health, scoped access, synthetic release smoke (in staging) and operational alert routing; never seed/test production. Use application rollback without dropping additive schema, or a separately authorized recovery plan if data recovery is necessary.
 
 No PR is merged or production release authorized by this draft.
+
+
+## Publication result
+
+The branch was pushed with its exact Vercel preview exclusion enabled. A read-only post-push check found no feature-branch Vercel deployments and an unchanged production deployment. The branch-rule regression, typecheck and build pass. Automatic draft PR creation was attempted, but GitHub GraphQL returned `Forbidden`; no draft PR was created by that attempt. Use the GitHub PR creation form and choose **Create draft pull request**, or restore authorized API access. Do not merge or deploy.
