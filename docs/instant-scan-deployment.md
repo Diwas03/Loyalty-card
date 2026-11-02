@@ -27,3 +27,7 @@ Local test fixture databases remaining at cleanup: zero. The temporary PostgreSQ
 ## Operator handoff
 
 Reload the staff dashboard before testing. Scan once for one stamp; start the scanner and scan again for each extra stamp. On a network failure, resolve the retained request for that customer before starting another transaction. To restore the prior confirmation/cooldown behavior, redeploy the previous production source `997298a`; do not delete or reverse legitimately earned customer records. Release review notes are in `docs/instant-scan-release.md` on the release branch.
+
+## Wallet count follow-up — 2026-11-02
+
+Deployed release `4eb64d3fe145f2aa9c19fd48f624bf5cd6475da2` through production deployment `dpl_8WmdpmyeXa7G2wtrsYtsz8g58nxs` (READY, stable app alias). Wallet dashboard tiles now show counts such as “3 of 8 stamps” without bars; detailed cards retain their existing progress visuals. The live card renderer returned HTTP 200 and its SHA-256 matched the release. Typecheck, build, UI smoke and PWA smoke passed. A synthetic browser rendering check covered 320/390/768/1440px and zero/partial/complete/100-stamp goals with no bars or overflow. No API or database source changes were required. The same renderer change is committed on the feature branch as `5267354`. Main remains unchanged.
