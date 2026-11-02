@@ -1,3 +1,5 @@
+> Publication update: the user explicitly authorized disabling previews for this feature branch only, then pushing it and opening a draft PR. `vercel.json` now uses the documented exact branch rule `git.deploymentEnabled["feature/backend-pilot-readiness"]=false`. Main and all unspecified branches retain Vercel’s default behavior. This permits code-review publication **without a preview**, not deployment or access to production. The earlier staging-isolation findings remain a blocker to enabling any preview. See the publication verification appended below.
+
 # Backend pilot readiness — feature branch only
 
 Base: `997298a` (`origin/main`, fetched 2026-11-02). Worktree: `/workspace/loyalty-backend-pilot`.

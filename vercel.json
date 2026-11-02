@@ -59,5 +59,10 @@
       "destination": "/business/dashboard.html",
       "permanent": false
     }
-  ]
+  ],
+  "git": {
+    "deploymentEnabled": {
+      "feature/backend-pilot-readiness": false
+    }
+  }
 }
