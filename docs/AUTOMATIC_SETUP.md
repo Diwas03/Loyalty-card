@@ -1,5 +1,7 @@
 # Completing this connected deployment
 
+> Pilot-readiness branch update: read [pilot operations](pilot-operations.md) first. Cloud startup no longer automatically applies migrations, local operator CLIs refuse remote databases, and preview isolation is mandatory. The legacy production setup steps below require separate authorized operator review.
+
 Production URL: **https://loyalty-card-pi.vercel.app**.
 
 If `/healthz` reports `DATABASE_SCHEMA_FILE_MISSING` after an upgrade, the

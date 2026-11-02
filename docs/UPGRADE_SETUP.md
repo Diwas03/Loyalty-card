@@ -1,5 +1,7 @@
 # Upgrade checkpoint setup and verification
 
+> Pilot-readiness branch update: read [pilot operations](pilot-operations.md) first. Cloud startup no longer automatically applies migrations, local operator CLIs refuse remote databases, and preview isolation is mandatory. The legacy production setup steps below require separate authorized operator review.
+
 This branch is an incomplete P0/P1 checkpoint, not the full platform requested in the upgrade document. See implementation-plan.md for every remaining gate. No production data or deployment has been changed.
 
 ## Test environment

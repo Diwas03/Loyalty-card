@@ -1,0 +1,19 @@
+# Provider-neutral specification only; no external monitor was created.
+health:
+  url: https://STAGING_OR_PRODUCTION_ORIGIN/healthz
+  method: GET
+  interval_seconds: 60
+  timeout_seconds: 10
+  expected_status: 200
+  expected_json_status: ok
+  alert_after_consecutive_failures: 2
+  notification_destination: APPROVED_OPERATOR_CHANNEL
+privacy:
+  exclude_request_bodies: true
+  exclude_authorization_and_cookies: true
+  exclude_customer_urls_and_documents: true
+staging_drill:
+  url: https://ISOLATED_STAGING_ORIGIN/api/ops/alert-test
+  authorization: SECURE_MONITOR_HEADER_SETTING_ONLY
+  expected_intentional_failure: 503
+  production_route_available: false

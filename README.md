@@ -1,5 +1,7 @@
 # Loyalty · Multi-shop web wallet
 
+> **Pilot-readiness branch:** see [the audit and actual checks](docs/backend-pilot-readiness.md), [operations/release gates](docs/pilot-operations.md), and [API compatibility decisions](docs/pilot-api-contract.md). Vercel startup is read-only; repository mutation/backup/restore CLIs refuse remote databases. Earlier automatic-hosting instructions describe the previous release and are not authorization to run production migrations. Preview isolation must be verified before pushing this branch.
+
 Upgrade work is tracked in [the evidence-based audit and checklist](docs/implementation-plan.md). See [upgrade setup and verification](docs/UPGRADE_SETUP.md) for the isolated seed, tests, additive migrations, rollback notes and honest integration status. P0/P1 remain incomplete; this branch is not a production release.
 
 ## Repository and local Git workflow
