@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { randomUUID, generateKeyPairSync } from "node:crypto";
 import request from "supertest";
+import { memDb } from "./helpers.js";
 import { hostedPool, deliverHosted, readMember } from "../src/hosted-db.js";
 import { createHostedApp } from "../src/hosted-app.js";
 import { passwordHash } from "../src/auth.js";
@@ -17,7 +18,7 @@ process.env.DATABASE_URL = url.toString();
 delete process.env.PUBLIC_BASE_URL;
 delete process.env.GOOGLE_SERVICE_ACCOUNT_FILE;
 delete process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
-const db = hostedPool();
+const db = await memDb();
 before(async () => {
   await db.query("DROP SCHEMA IF EXISTS coffee CASCADE");
   await initializeHosted(db);

@@ -1,3 +1,4 @@
+import { requireLocalOperator } from "../src/environment-safety.js";
 import "dotenv/config";
 import { openDb } from "../src/db.js";
 import { writeFileSync, mkdirSync } from "node:fs";
@@ -6,6 +7,7 @@ const dest = resolve(
   process.argv[2] ||
     `data/backups/coffee-${new Date().toISOString().replace(/[:.]/g, "-")}.json`,
 );
+requireLocalOperator("backup.ts");
 const db = openDb();
 const c = await db.connect();
 try {

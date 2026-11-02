@@ -41,6 +41,7 @@ const scanFeedback = (text, error = false) => {
 let selected,
   controls,
   role,
+  pilotLedger = false,
   scanStamping = false,
   scanGeneration = 0,
   busy = false,
@@ -278,7 +279,7 @@ async function lookup() {
   $("#customer-name").textContent = m.name;
   $("#balance").textContent =
     `${m.stamps} / ${m.stampGoal} stamps · ${m.rewards} available rewards`;
-  $("#customer-link").hidden = false;
+  $("#customer-link").hidden = !m.privateCardToken && pilotLedger;
   $("#customer-link").href = "/?member=" + encodeURIComponent(m.privateCardToken || m.id);
   $("#redeem").disabled = m.rewards < 1;
   $("#redeem").textContent = `Redeem one ${m.rewardLabel || "reward"}`;
@@ -715,6 +716,7 @@ window.addEventListener("pagehide", () => { controls?.stop(); staffSession = und
   try {
     const me = await api("/api/staff/me");
     role = me.role;
+    pilotLedger = me.pilotLedger === true;
     scanStamping = me.scanStamping === true;
     dashboardEnabled = me.businessDashboard === true;
     if (role === "owner") {

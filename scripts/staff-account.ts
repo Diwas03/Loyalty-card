@@ -1,3 +1,4 @@
+import { requireLocalOperator } from "../src/environment-safety.js";
 import "dotenv/config";
 import { createInterface } from "node:readline/promises";
 import { Writable } from "node:stream";
@@ -29,6 +30,7 @@ const password = await rl.question("");
 rl.close();
 process.stdout.write("\n");
 
+requireLocalOperator("staff-account.ts");
 const db = openDb();
 try {
   await setStaff(db, username, password, role);

@@ -1,3 +1,4 @@
+import { runtimeEnvironment, externalDeliveryAllowed } from "./environment-safety.js";
 import { cardDesign } from "./card-design.js";
 import pg from "pg";
 import { databaseOptions } from "./database-config.js";
@@ -8,7 +9,7 @@ pg.types.setTypeParser(20, Number);
 export const digest = (s: string) =>
   createHash("sha256").update(s).digest("hex");
 export function hostedPool() {
-  return new pg.Pool(databaseOptions());
+  return new pg.Pool(databaseOptions(runtimeEnvironment()));
 }
 export type HostedDB = Pick<pg.Pool, "query">;
 export async function readMember(db: HostedDB, id: string) {
@@ -55,7 +56,7 @@ export async function deliverHosted(
     .rows[0].job;
   if (!j) return false;
   try {
-    if (!readiness().google.enabled) {
+    if ((!externalDeliveryAllowed() && deliver === updateGoogle) || !readiness().google.enabled) {
       await db.query(
         "UPDATE coffee.jobs SET status='blocked',error='Google credentials missing',next_at=$1 WHERE id=$2",
         [Date.now() + 60000, j.id],

@@ -1,7 +1,10 @@
+import { requireLocalOperator } from "./environment-safety.js";
 import "dotenv/config";
 import { openDb, migrate } from "./db.js";
 import { runOne } from "./queue.js";
 
+requireLocalOperator("Standalone runtime initialization");
+process.env.EXTERNAL_DELIVERY_ENABLED="false";
 const db = openDb();
 await migrate(db);
 
@@ -16,7 +19,7 @@ const timer = setInterval(async () => {
   } catch (e) {
     console.error(
       "Queue worker error",
-      e instanceof Error ? e.message : "unknown",
+      "server_error",
     );
   } finally {
     running = false;

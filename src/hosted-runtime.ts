@@ -1,3 +1,4 @@
+import { requireLocalDatabase } from "./environment-safety.js";
 import type { Pool } from "pg";
 import { installHosted } from "./hosted-setup.js";
 
@@ -16,6 +17,7 @@ export function startupFailure(error: unknown) {
 
 /** Prepare a new hosted database atomically before accepting API requests. */
 export async function initializeHosted(db: Pool) {
+  requireLocalDatabase((db as Pool & { options: { connectionString?: string } }).options.connectionString, "Schema initialization");
   const client = await db.connect();
   try {
     await client.query("BEGIN");
@@ -30,4 +32,12 @@ export async function initializeHosted(db: Pool) {
   } finally {
     client.release();
   }
+}
+
+/** Vercel startup is read-only. Migrations are a separate reviewed release action. */
+export async function verifyHostedSchema(db: Pool) {
+  const required = ["shops","members","operations","ledger","issued_rewards","business_memberships","locations","location_grants","sessions","card_transfers","merchant_invites","pilot_readiness_versions"].map(name=>"coffee."+name);
+  const result = await db.query("SELECT bool_and(to_regclass(name) IS NOT NULL) AND to_regprocedure('coffee.create_transfer(text,text)') IS NOT NULL AND to_regprocedure('coffee.staff_adjust(text,text,integer,text,text,text,text)') IS NOT NULL AS ready FROM unnest($1::text[]) AS name", [required]);
+  if (!result.rows[0].ready || !(await db.query("SELECT 1 FROM coffee.pilot_readiness_versions WHERE version='20261102'")).rowCount)
+    throw Object.assign(Error("Reviewed pilot migrations must be applied before startup"), { code: "42P01" });
 }
