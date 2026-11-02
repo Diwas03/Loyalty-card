@@ -6,10 +6,10 @@ Record device/OS/browser, build commit, shop/location, date and observed result.
 
 - [ ] iPhone Safari browser and installed PWA; Android Chrome browser and installed PWA.
 - [ ] Owner creates/uses an approved pilot business; individual cashier signs in to an assigned location. Customer joins via the public **shop** QR (not another person's card).
-- [ ] Scan shows customer details; balance remains unchanged until explicit qualifying-purchase confirmation.
+- [ ] Scan a valid shop card: one stamp is added immediately with no dialog. Start the scanner again and rescan immediately: exactly one additional stamp. Duplicate decoded frames do not add stamps.
 - [ ] Cancel purchase: no stamp, no purchase audit, no referral payout. Confirm once: exactly one credit.
 - [ ] Scan an unrelated QR, signup QR, unknown membership and another shop's card: clear invalid message, no changes.
-- [ ] Simulate lost connection after confirmation; retry the pending action, do not create a new purchase; earn once.
+- [ ] Simulate lost connection after scan; retry the pending action, do not create a new purchase; earn once.
 - [ ] Reach target, see the promised reward and expiry; redeem once, refresh the customer's committed balance. Two staff devices attempting the same last reward cannot both redeem.
 - [ ] Referral friend joins from public invite and makes the first confirmed paid visit: original customer earns the configured bonus once. Signup/cancel/retry alone earns none.
 

@@ -21,7 +21,7 @@ Preview database settings still share production configuration and are **not saf
 
 ## Policy and compatibility
 
-Preserve explicit confirmation (scan/cancel earns nothing), supported progress corrections without monetary/voucher/referral reversal, snapshot reward terms, and existing manager shop-wide aggregate reporting. Merchant signoff on these policies is still needed before launch. Invitation-only merchant onboarding is opt-in and doesn't block existing authorized merchants. Cashier private-card links are removed from the API/UI; see the API contract. Apply reviewed migrations before the new application; reverting app code does not reverse migrations.
+Merchant-requested update: valid scans award one stamp immediately, each intentional rescan adds another, and retries/repeated frames cannot duplicate credit; manual lookup earns nothing, supported progress corrections without monetary/voucher/referral reversal, snapshot reward terms, and existing manager shop-wide aggregate reporting. Merchant signoff on these policies is still needed before launch. Invitation-only merchant onboarding is opt-in and doesn't block existing authorized merchants. Cashier private-card links are removed from the API/UI; see the API contract. Apply reviewed migrations before the new application; reverting app code does not reverse migrations.
 
 ## Later review and release steps
 

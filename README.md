@@ -256,6 +256,6 @@ The scanner accepts only customer membership QRs belonging to the signed-in
 shop. Unrelated QRs, signup QRs, unknown memberships and other shops’ cards show
 **Invalid QR code. Please show a valid customer membership QR for [shop].**
 without changing a balance. A successful scan automatically adds one stamp;
-repeated frames and retries remain idempotent, and repeat scans within five
-seconds do not add another stamp. Reward redemption stays a separate confirmed
+repeated frames and retries remain idempotent. Start the scanner again for
+each additional stamp; distinct scans count immediately, without a cooldown. Reward redemption stays a separate confirmed
 action. Local and hosted servers both support automatic scan stamping.
