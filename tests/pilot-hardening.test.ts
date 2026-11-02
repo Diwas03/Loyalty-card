@@ -47,6 +47,12 @@ test("location revocation blocks reads/corrections; cross-shop reads cannot expi
   const manager=request.agent(app).set('Authorization','Bearer '+login.token);
   const member=(await db.query("SELECT coffee.enroll_customer('Own member',NULL,$1) AS m",[a.shop])).rows[0].m;
   assert.equal((await manager.get('/api/staff/members/'+member.id).expect(200)).body.privateCardToken,undefined);
+  await manager.post('/api/staff/members/'+member.id+'/adjustment').set('Idempotency-Key',randomUUID()).send({delta:1,reason:'Correction audit check',confirm:true}).expect(200);
+  const audit=(await db.query("SELECT actor,reason,location_id,stamp_delta,reward_delta FROM coffee.ledger WHERE member_id=$1 AND kind='adjustment'",[member.id])).rows[0];
+  assert.deepEqual(audit,{actor:'scoped-manager',reason:'Correction audit check',location_id:a.shop+':main',stamp_delta:1,reward_delta:0});
+  await manager.post('/api/staff/members/'+member.id+'/adjustment').set('Idempotency-Key',randomUUID()).send({delta:7,reason:'Cannot create a reward',confirm:true}).expect(409);
+  assert.equal((await db.query('SELECT rewards FROM coffee.members WHERE id=$1',[member.id])).rows[0].rewards,0);
+
   await db.query('DELETE FROM coffee.location_grants WHERE username=$1',['scoped-manager']);
   await manager.get('/api/staff/members').expect(403);
   await manager.get('/api/staff/reports').expect(403);

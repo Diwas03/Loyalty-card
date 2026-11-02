@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from "node:util";
 import type { Pool } from "pg";
 import { requireLocalDatabase } from "./environment-safety.js";
 const quote = (value: string) => '"'+value.replaceAll('"','""')+'"';
@@ -28,10 +29,34 @@ export async function restorePilot(db:Pool,snapshot:PilotBackup) {
   if((await c.query("SELECT 1 FROM coffee.members UNION ALL SELECT 1 FROM coffee.staff_accounts LIMIT 1")).rowCount)throw Error("Restore target contains accounts or memberships; refusing to overwrite");
   const tables=(await c.query("SELECT tablename FROM pg_tables WHERE schemaname='coffee' ORDER BY tablename")).rows.map(row=>String(row.tablename));
   if(JSON.stringify(tables)!==JSON.stringify(Object.keys(snapshot.tables).sort()))throw Error("Backup schema differs from the reviewed migration version");
+  await c.query("LOCK TABLE "+tables.map(name=>'coffee.'+quote(name)).join(',')+" IN ACCESS EXCLUSIVE MODE");
+  // Refuse configurations/audit/invitations as well as occupied member tables.
+  // A restore target may contain only the migration's untouched bootstrap rows.
+  const bootstrap:Record<string,Record<string,unknown>[]> = {
+    programme:[{id:1,stamp_goal:8}],
+    shops:[{id:"default",name:"Demo Coffee Shop",color:"#41291d",stamp_goal:8,
+      card_title:"Member card",tagline:"A little more rewarding.",reward_label:"Free coffee",
+      stamp_icon:"check",card_style:"classic",logo_data:"",referrals_enabled:true,
+      referral_reward_kind:"stamps",referral_reward_amount:1,currency:"BTN",timezone:"Asia/Thimphu",
+      country:"BT",reward_expiry_days:null}],
+    locations:[{id:"default:main",shop_id:"default",name:"Main location",active:true}],
+    pilot_readiness_versions:[{version:"20261102"}],
+  };
+  for (const table of tables) {
+    if (table in bootstrap) {
+      const projection=table==='pilot_readiness_versions'?"jsonb_build_object('version',t.version)":"to_jsonb(t)";
+      const rows=(await c.query(`SELECT ${projection} AS record FROM coffee.${quote(table)} t`)).rows.map(row=>row.record);
+      if (!isDeepStrictEqual(rows,bootstrap[table])) throw Error("Restore target is not a pristine migrated database");
+    } else if ((await c.query(`SELECT 1 FROM coffee.${quote(table)} LIMIT 1`)).rowCount) {
+      throw Error("Restore target contains application data; refusing to overwrite");
+    }
+  }
+  const versions=(snapshot.tables.pilot_readiness_versions||[]).map(row=>row.version).sort();
+  if (!isDeepStrictEqual(versions,["20261102"])) throw Error("Backup migration version differs from this application");
   // Superuser-only local rehearsal: avoid replaying audit/voucher/referral triggers.
   // Check/unique constraints remain enforced; all FKs are explicitly checked below.
   await c.query("SET LOCAL session_replication_role=replica");
-  await c.query("TRUNCATE "+tables.map(name=>'coffee.'+quote(name)).join(',')+" RESTART IDENTITY CASCADE");
+  await c.query("TRUNCATE "+tables.map(name=>'coffee.'+quote(name)).join(',')+" RESTART IDENTITY");
   for(const table of tables) {
    const columns=(await c.query("SELECT column_name,udt_name FROM information_schema.columns WHERE table_schema='coffee' AND table_name=$1 ORDER BY ordinal_position",[table])).rows;
    const names=columns.map(col=>String(col.column_name));

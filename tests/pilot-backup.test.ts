@@ -42,3 +42,43 @@ test("synthetic private backup restores memberships, promised vouchers, immutabl
   await assert.rejects(restorePilot(restored,snapshot),/contains accounts/);
  }finally{await source.end();if(restored)await restored.end();await admin.query(`DROP DATABASE IF EXISTS "${name}"`);await admin.end();rmSync(directory,{recursive:true,force:true});}
 });
+
+async function isolatedRestoreCase(run:(source:pg.Pool,target:pg.Pool)=>Promise<void>){
+ const source=await memDb(),admin=new pg.Pool({connectionString:process.env.TEST_DATABASE_URL});
+ const name='coffee_restore_'+randomBytes(8).toString('hex');let target:pg.Pool|undefined;
+ try{
+  await initializeHosted(source);
+  await admin.query(`CREATE DATABASE "${name}"`);
+  const url=new URL(process.env.TEST_DATABASE_URL!);url.pathname='/'+name;
+  target=new pg.Pool({connectionString:url.toString()});await initializeHosted(target);
+  await run(source,target);
+ }finally{await source.end();if(target)await target.end();await admin.query(`DROP DATABASE IF EXISTS "${name}"`);await admin.end();}
+}
+test("restore cannot cascade into unrelated schemas and rolls back safely",async()=>{
+ await isolatedRestoreCase(async(source,target)=>{
+  const snapshot=await backupPilot(source);
+  await target.query("CREATE TABLE public.unrelated_notes(id int PRIMARY KEY,shop_id text REFERENCES coffee.shops(id),note text NOT NULL)");
+  await target.query("INSERT INTO public.unrelated_notes VALUES(1,'default','Preserve unrelated work')");
+  await assert.rejects(restorePilot(target,snapshot),/cannot truncate/);
+  assert.equal((await target.query('SELECT note FROM public.unrelated_notes')).rows[0].note,'Preserve unrelated work');
+  assert.equal((await target.query("SELECT name FROM coffee.shops WHERE id='default'")).rows[0].name,'Demo Coffee Shop');
+  assert.equal((await target.query('SHOW session_replication_role')).rows[0].session_replication_role,'origin');
+ });
+});
+test("restore refuses existing configuration and invitation data even without members",async()=>{
+ await isolatedRestoreCase(async(source,target)=>{
+  const snapshot=await backupPilot(source);
+  await target.query("UPDATE coffee.shops SET name='Existing configuration' WHERE id='default'");
+  await assert.rejects(restorePilot(target,snapshot),/not a pristine/);
+  assert.equal((await target.query("SELECT name FROM coffee.shops WHERE id='default'")).rows[0].name,'Existing configuration');
+  await target.query("UPDATE coffee.shops SET name='Demo Coffee Shop' WHERE id='default'");
+  await target.query("INSERT INTO coffee.merchant_invites(token_hash,expires,created_by) VALUES('synthetic-invite',1,'operator')");
+  await assert.rejects(restorePilot(target,snapshot),/contains application data/);
+  assert.equal((await target.query('SELECT count(*)::int AS n FROM coffee.merchant_invites')).rows[0].n,1);
+  await target.query('DELETE FROM coffee.merchant_invites');
+  const incompatible=structuredClone(snapshot);incompatible.tables.pilot_readiness_versions[0].version='future-unreviewed-version';
+  await assert.rejects(restorePilot(target,incompatible),/migration version differs/);
+  assert.equal((await target.query("SELECT name FROM coffee.shops WHERE id='default'")).rows[0].name,'Demo Coffee Shop');
+
+ });
+});
