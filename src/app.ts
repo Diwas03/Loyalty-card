@@ -474,7 +474,6 @@ export function createApp(db: DB) {
   });
 
   app.post("/api/staff/members/:id/scan", staff, async (req, res, next) => {
-    if (req.body.confirm !== true) { res.status(400).json({ error: "Confirm a paid qualifying purchase before recording credit" }); return; }
     const id = String(req.params.id), key = req.get("Idempotency-Key");
     if (!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(id) || !(await member(db, id))) {
       res.status(404).json({ error: "Invalid QR code. Please show a valid customer membership QR for this shop." }); return;

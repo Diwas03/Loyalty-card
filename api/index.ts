@@ -1,13 +1,13 @@
 import { waitUntil } from "@vercel/functions";
 import { createHostedApp } from "../src/hosted-app.js";
 import { hostedPool } from "../src/hosted-db.js";
-import { initializeHosted, startupFailure } from "../src/hosted-runtime.js";
+import { verifyHostedSchema, startupFailure } from "../src/hosted-runtime.js";
 import type { Request, Response } from "express";
 let ready: Promise<ReturnType<typeof createHostedApp>> | undefined;
 async function prepare() {
   const db = hostedPool();
   try {
-    await initializeHosted(db);
+    await verifyHostedSchema(db);
   } catch (error) {
     await db.end();
     throw error;

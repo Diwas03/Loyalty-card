@@ -1,7 +1,10 @@
+import { requireLocalOperator } from "./environment-safety.js";
 import "dotenv/config";
 import { openDb, migrate } from "./db.js";
 import { createApp } from "./app.js";
 
+requireLocalOperator("Standalone runtime initialization");
+process.env.EXTERNAL_DELIVERY_ENABLED="false";
 const db = openDb();
 await migrate(db);
 

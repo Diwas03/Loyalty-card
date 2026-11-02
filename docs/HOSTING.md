@@ -1,5 +1,7 @@
 # Shop QR + Supabase + Vercel phone testing
 
+> Pilot-readiness branch update: read [pilot operations](pilot-operations.md) first. Cloud startup no longer automatically applies migrations, local operator CLIs refuse remote databases, and preview isolation is mandatory. The legacy production setup steps below require separate authorized operator review.
+
 For the latest connected deployment and automated schema/Cron configuration, start with [Automatic setup](AUTOMATIC_SETUP.md). Integration-provided POSTGRES_URL aliases are supported, and the Production Vercel hostname supplies a stable origin fallback. The older SQLite flow below is for historical data imports only.
 
 The shop QR opens **`/join.html`**, never one customer's QR. A visitor chooses a nickname and confirms membership; the app opens the real server-signed Google Wallet flow. Google requires the customer to confirm **Add**. QR scanning cannot silently install a card.

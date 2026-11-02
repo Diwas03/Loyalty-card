@@ -5,6 +5,7 @@ import { migrate } from "../src/db.js";
 export async function memDb(): Promise<pg.Pool> {
   const url = new URL(process.env.TEST_DATABASE_URL || "");
   if (
+    !["postgres:","postgresql:"].includes(url.protocol) || url.search || url.hash ||
     !["localhost", "127.0.0.1"].includes(url.hostname) ||
     url.pathname !== "/coffee_test"
   )

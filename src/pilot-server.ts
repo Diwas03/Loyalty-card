@@ -1,3 +1,4 @@
+import { requireLocalDatabase } from "./environment-safety.js";
 import "dotenv/config";
 import express from "express";
 import { fileURLToPath } from "node:url";
@@ -6,13 +7,14 @@ import { initializeHosted } from "./hosted-runtime.js";
 import { createHostedApp } from "./hosted-app.js";
 
 // Run the same application as Vercel against an explicitly isolated local DB.
-const url=new URL(process.env.DEV_DATABASE_URL || "http://invalid");
+const url=requireLocalDatabase(process.env.DEV_DATABASE_URL,"Local pilot development");
 if (!["postgres:","postgresql:"].includes(url.protocol) || !["127.0.0.1","localhost"].includes(url.hostname) || url.pathname!=="/coffee_dev")
   throw Error("Set DEV_DATABASE_URL to a loopback coffee_dev database. The local pilot never uses DATABASE_URL.");
 delete process.env.PUBLIC_BASE_URL;
 delete process.env.VERCEL_PROJECT_PRODUCTION_URL;
 delete process.env.VERCEL;
 delete process.env.GOOGLE_ISSUER_ID;
+process.env.EXTERNAL_DELIVERY_ENABLED="false";
 process.env.APPLE_WALLET_ENABLED="false";
 const db=new Pool({connectionString:url.toString(),ssl:false});
 try { await initializeHosted(db); } catch(error) { await db.end(); throw error; }

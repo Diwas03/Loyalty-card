@@ -43,7 +43,7 @@ Initial checks: typecheck and build passed; Docker unavailable. A separate Postg
 ### P0 foundations
 
 - [x] Baseline audit, isolated branch, real PostgreSQL tests. Preserve live data; no force push/deploy.
-- [x] Explicit purchase confirmation after scan/manual lookup; unconfirmed credit rejected by both servers. QR scanning alone leaves balance unchanged.
+- [x] Updated merchant policy: valid camera scans award one stamp immediately; intentional rescans add another without cooldown. Manual lookup stays read-only; redemption and corrections remain confirmed.
 - [x] Refresh-safe session restore; cross-origin/content-type checks, logout/expiry tests. No local-storage staff credential.
 - [x] Hosted append-only ledger and bounded owner correction with actor/reason; duplicate correction keys replay exactly once; tenant and role rejection tests.
 - [x] Additive private-link rotation; old public reads/QR access rejected; existing balances and scanner IDs preserved. Concurrent one-use transfer, expiry and rotation invalidation tested.

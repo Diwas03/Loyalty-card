@@ -2,13 +2,26 @@ import { protectLegacyTables } from "./legacy-protection.js";
 import { readFileSync } from "node:fs";
 import type { HostedDB } from "./hosted-db.js";
 export async function installHosted(db: HostedDB) {
-  await db.query(readFileSync("supabase/schema.sql", "utf8"));
-  await db.query(readFileSync("supabase/shops.sql", "utf8"));
-  await db.query(readFileSync("supabase/referrals.sql", "utf8"));
-  await db.query(readFileSync("supabase/pilot.sql", "utf8"));
-  await db.query(readFileSync("supabase/rewards.sql", "utf8"));
-  await db.query(readFileSync("supabase/tenancy.sql", "utf8"));
-  await protectLegacyTables(db);
+  // All migration statements must share one session; never leak search_path to a pool.
+  const pool = db as HostedDB & { connect?: () => Promise<any>; release?: () => void };
+  const own = typeof pool.connect === "function" && !pool.release;
+  const client = own ? await pool.connect!() : db;
+  const original = (await client.query("SHOW search_path")).rows[0].search_path;
+  let failed = false;
+  try {
+    if (own) { await client.query("BEGIN"); await client.query("SELECT pg_advisory_xact_lock(7342101)"); await client.query("SELECT pg_advisory_xact_lock(7342102)"); }
+    for (const file of ["schema", "shops", "referrals", "pilot", "rewards", "tenancy", "readiness"])
+      await client.query(readFileSync("supabase/" + file + ".sql", "utf8"));
+    await protectLegacyTables(client);
+    if (own) await client.query("COMMIT");
+  } catch(error) {
+    failed = true;
+    if (own) await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    try { if (own || !failed) await client.query("SELECT set_config('search_path',$1,false)", [original]); }
+    finally { if (own) client.release(); }
+  }
 }
 export async function hostedStatus(db: HostedDB) {
   const [

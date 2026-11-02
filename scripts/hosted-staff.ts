@@ -1,3 +1,4 @@
+import { requireLocalOperator } from "../src/environment-safety.js";
 import "dotenv/config";
 import { createInterface } from "node:readline/promises";
 import { Writable } from "node:stream";
@@ -11,6 +12,7 @@ if (
   !["staff", "owner", "disable"].includes(role)
 )
   throw Error("Usage: npm run hosted:staff -- username [staff|owner|disable]");
+requireLocalOperator("hosted-staff.ts");
 const db = hostedPool();
 const client = await db.connect();
 try {

@@ -1,3 +1,8 @@
+// Isolated pilot work must never contact a real issuer, even with inherited credentials.
+if (process.env.VERCEL_ENV === "preview" || process.env.APP_ENV === "staging" || process.env.EXTERNAL_DELIVERY_ENABLED === "false") {
+  console.log("Wallet provider diagnostics disabled in isolated pilot environments.");
+  process.exit(0);
+}
 import "dotenv/config";
 import { readFileSync } from "node:fs";
 import { importPKCS8, SignJWT } from "jose";

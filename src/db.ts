@@ -180,11 +180,6 @@ export async function transact(
       throw new Error("No reward available");
 
     const goal = m.stamp_goal || 8;
-    if (scan && (await client.query("SELECT 1 FROM operations WHERE member_id=$1 AND kind='purchase' AND created_at>$2 LIMIT 1", [id, Date.now() - 5000])).rowCount) {
-      const result = { id, stamps: m.stamps, rewards: m.rewards, version: m.version, stampGoal: goal, awarded: false };
-      await client.query("INSERT INTO scan_requests VALUES($1,$2,$3,$4,false)", [key, id, JSON.stringify(result), Date.now()]);
-      await client.query("COMMIT"); return result;
-    }
     const stamps = kind === "purchase" ? (m.stamps + 1) % goal : m.stamps;
     const rewards =
       kind === "purchase"

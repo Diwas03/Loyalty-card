@@ -8,3 +8,7 @@ secrets
 *.log
 python3.exe
 python3.cmd
+
+backups
+exports
+artifacts

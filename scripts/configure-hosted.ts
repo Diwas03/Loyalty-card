@@ -1,3 +1,4 @@
+import { requireLocalOperator } from "../src/environment-safety.js";
 import "dotenv/config";
 import { hostedPool } from "../src/hosted-db.js";
 import {
@@ -8,6 +9,8 @@ import {
 } from "../src/hosted-setup.js";
 import { baseUrl } from "../src/config.js";
 // Run with the private provider connection in your local environment. Never supply secrets as CLI arguments.
+requireLocalOperator("configure-hosted.ts");
+if (process.argv.includes("--cron")) throw Error("External cron setup is disabled in local pilot tooling; configure only in a separately authorized staging environment.");
 const db = hostedPool();
 try {
   await installHosted(db);

@@ -34,8 +34,6 @@ try {
   await page.locator("#tab-scan").click(); await page.locator("#scan").click();
   await page.evaluate(id=>(window as any).frame(id),member.id);
   await page.locator("#customer-name").filter({hasText:"Pilot Customer"}).waitFor();
-  assert.equal((await db.query("SELECT stamps FROM coffee.members WHERE id=$1",[member.id])).rows[0].stamps,0);
-  await page.locator("#purchase").click();
   await page.waitForFunction(()=>document.querySelector("#balance")?.textContent?.startsWith("1 / 8"));
   await page.locator("#customer-secondary-actions > summary").click();
   await page.locator("#correction input[name=delta]").fill("-1"); await page.locator("#correction input[name=reason]").fill("Counter correction");
@@ -76,7 +74,7 @@ try {
   await page.locator('#tab-scan').click();
   await page.route('**/api/staff/members/'+member.id,async route=>{await new Promise(resolve=>setTimeout(resolve,300));await route.continue();});
   await page.locator('#member').fill(member.id);await page.locator('#lookup button').click();
-  assert.ok(await page.locator('#purchase').isDisabled());
+  assert.equal(await page.locator('#purchase').count(),0);
   await page.locator('#member').fill(second.id);await page.locator('#lookup button').click();
   await page.locator('#customer-name').filter({hasText:'Second Customer'}).waitFor();
   await page.waitForTimeout(450);assert.equal(await page.locator('#customer-name').innerText(),'Second Customer');
@@ -143,11 +141,12 @@ try {
   for(const route of ['/business/','/business/login.html','/business/register.html','/join.html','/recover.html'])for(const width of [390,1440]){await visual.setViewportSize({width,height:900});await visual.goto(origin+route);assert.ok(await visual.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),route+' overflow '+width);await visual.screenshot({path:'data/upgrade-screenshots/public-'+route.replaceAll('/','-').replaceAll('.','-')+'-'+width+'.png',fullPage:true});}
   await visual.close();
   await page.locator('#tab-scan').click();await page.locator('#member').fill(member.id);await page.locator('#lookup button').click();await page.locator('#customer-name').filter({hasText:'Pilot Customer'}).waitFor();
-  page.removeAllListeners('dialog');
-  page.once('dialog',async dialog=>{assert.match(dialog.message(),/Pilot Customer/);assert.match(dialog.message(),/Thimphu Coffee/);await dialog.dismiss();});
-  const beforeCancel=(await db.query('SELECT stamps FROM coffee.members WHERE id=$1',[member.id])).rows[0].stamps;
-  await page.locator('#purchase').click();assert.equal((await db.query('SELECT stamps FROM coffee.members WHERE id=$1',[member.id])).rows[0].stamps,beforeCancel);
-  page.on('dialog',dialog=>dialog.accept());
+  assert.equal(await page.locator('#purchase').count(),0);
+  const beforeLookup=(await db.query('SELECT stamps FROM coffee.members WHERE id=$1',[member.id])).rows[0].stamps;
+  await page.locator('#tab-scan').click();
+  await page.locator('#lookup button').click();
+  await page.locator('#customer-name').filter({hasText:'Pilot Customer'}).waitFor();
+  assert.equal((await db.query('SELECT stamps FROM coffee.members WHERE id=$1',[member.id])).rows[0].stamps,beforeLookup);
   await page.setViewportSize({width:390,height:844});
   await page.locator('#section-toggle').click();await page.locator('#tab-overview').focus();await page.keyboard.press('End');assert.equal(await page.evaluate(()=>document.activeElement?.id),'tab-reports');
   await page.locator('#tab-reports').click();assert.equal(await page.locator('#section-navigation').getAttribute('open'),null);
@@ -167,5 +166,5 @@ try {
   await page.locator("#logout").click(); await page.waitForURL("**/business/login.html");
   await page.goto(origin+"/business/dashboard.html"); await page.waitForURL("**/business/login.html");
   assert.deepEqual(errors,[]);
-  console.log("Upgrade browser checks passed: refresh/logout, scan identifies without credit, explicit purchase, correction, report, camera-denied lookup, reduced motion, 320/390/768/1024/1440 screenshots, save boundaries, long content/goals 2/8/20/100, dialog/focus and error states.");
+  console.log("Upgrade browser checks passed: refresh/logout, instant scan credit, read-only manual lookup, correction, report, camera-denied lookup, reduced motion, 320/390/768/1024/1440 screenshots, save boundaries, long content/goals 2/8/20/100, dialog/focus and error states.");
 } finally { await browser.close(); await new Promise<void>(resolve=>server.close(()=>resolve())); await db.end(); }
