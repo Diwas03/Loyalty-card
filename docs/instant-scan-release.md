@@ -21,3 +21,7 @@ To roll back application behavior, redeploy the previous production source commi
 All nine checks passed against this release source tree on 2026-11-02: typecheck, build, 32 unit/integration tests, 14 hosted integration tests, browser smoke, scanner regression, upgrade browser, UI smoke and PWA smoke. The scanner regression verifies two immediate intentional scans, duplicate decoded frames, wrong-shop/invalid rejection, lost-response retry after reload, and no purchase confirmation dialogs. UI/PWA harness fixes open the existing mobile navigation/disclosures and use the current accessible card name. Detailed logs remain in ignored `data/readiness-verification/`.
 
 The broader feature branch separately passed all nine checks, with 47 unit/integration and 14 hosted integration tests. No production customer records were used for tests.
+
+## Wallet dashboard follow-up
+
+Customer wallet tiles now display a numeric count such as “3 of 8 stamps”, without a progress bar or stamp grid. Detailed card displays retain their existing progress visuals. The QR instruction now reflects automatic scan stamping. No database or API change is required. Typecheck, build, UI smoke and PWA smoke passed; a browser rendering check verified zero/partial/complete and 100-stamp targets without bars or overflow at 320, 390, 768 and 1440px.
