@@ -19,3 +19,10 @@ One stamp programme is shared across a shop's locations. Location grants control
 An existing correction adjusts only unconverted progress, requires a reason and authorized actor, is bounded by 100 stamps and `[0, target-1]`, and never changes promised vouchers. It is **not** a refund or reversal. If an incorrect purchase already issued or redeemed a reward or qualified a referral, stop and have the merchant decide resolution; do not silently retract it. Existing individual vouchers retain recorded label/expiry; historical aggregate-only rewards were grandfathered without invented expiry by the upstream migration. Verify any external historical promise with the merchant.
 
 Referrals remain enabled only with the fully tested first-confirmed-paid-visit implementation. No new campaign/refund/spend/VIP/POS/native Wallet functionality is activated. Existing spend/refund helpers in main are not wired into pilot endpoints and were not expanded.
+
+
+## Follow-up operational hardening
+
+Preview fingerprints compare the canonical PostgreSQL destination rather than raw URI spelling (DNS case/trailing dot/IDNA, URI-encoded user/database, and default database naming). Identity helper errors do not include credentials. Preview connections always carry an explicit port. Staging still requires independent operator verification and remains disabled for this branch.
+
+Local restoration now admits only an untouched migrated target, locks it during the check and replay, verifies the backup marker, and refuses cross-schema dependencies without cascading. Existing configurations and invitations cannot be silently overwritten. These safeguards change only isolated operator tooling; customer/merchant policy and application API contracts are unchanged.

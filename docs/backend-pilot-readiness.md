@@ -9,7 +9,7 @@ No changes to the original checkout or its uncommitted work. No production deplo
 
 Read-only Vercel environment **metadata** inspection on 2026-11-02 returned the same unscoped `DATABASE_URL` entry targeting both `production` and `preview`. `DATABASE_CA_CERT`, `STAFF_PASSWORD_HASH`, `PUBLIC_BASE_URL` and multiple provider file settings are also shared. Values were not decrypted/read. No isolated staging database/provider configuration was evidenced. At the original audit this blocked pushing. The later explicit authorization permits code-only publication with this exact branch’s Vercel deployments disabled; enabling a preview remains blocked. No Vercel settings were changed.
 
-Owner action: provision/identify an already authorized isolated staging database; configure dedicated branch-scoped `STAGING_DATABASE_URL`, `APP_ENV=staging`, and staging origin, with external delivery disabled and the operator-verified production identity fingerprint. Ensure production database/provider secrets are absent from preview builds as well as runtime; verify database identity differs from production and the branch cannot use production aliases. Review the branch's fail-closed preview guard before enabling previews. Verify Git preview behavior and CI secret isolation. Only then push `feature/backend-pilot-readiness` and create a draft PR. Never merge/deploy automatically.
+Owner action: provision/identify an already authorized isolated staging database; configure dedicated branch-scoped `STAGING_DATABASE_URL`, `APP_ENV=staging`, and staging origin, with external delivery disabled and the operator-verified production identity fingerprint. Ensure production database/provider secrets are absent from preview builds as well as runtime; verify database identity differs from production and the branch cannot use production aliases. Review the branch's fail-closed preview guard before enabling previews. Verify Git preview behavior and CI secret isolation. Code-only publication is already authorized with the exact feature-branch deployment exclusion in place; isolation is required before enabling any preview. Never merge/deploy automatically.
 
 ## Completed requirement checklist
 
@@ -39,7 +39,21 @@ Owner action: provision/identify an already authorized isolated staging database
 
 Use current main's explicitly confirmed stamp purchases (not historical automatic-on-scan behavior). Preserve one programme per shop, existing reward terms, current manager capabilities, and referral qualification after the first confirmed paid visit. No monetary refunds, voucher reversal, spend programmes, campaigns, imports, billing, VIP, POS or native-wallet activation. Corrections adjust only unconverted progress within `[0, goal-1]`; they do not retract issued rewards or referral bonuses. Changes to that rule require merchant approval before implementation.
 
-## Actual verification evidence
+## Latest follow-up verification
+
+A second code review against the original prompt found and fixed two remaining safety gaps:
+
+1. PostgreSQL identity fingerprints now compare canonical DNS and decoded URI identities, reject non-PostgreSQL inputs without echoing their values, and force an explicit preview port. Equivalent encodings/capitalization/trailing-dot spellings of production cannot masquerade as staging. Recompute operator fingerprints with the current helper before enabling a preview; independent infrastructure verification is still required.
+2. Restore now locks and admits only untouched migration bootstrap rows, rejects configuration/invitation/application data and unknown snapshot versions, and no longer uses `TRUNCATE ... CASCADE`. A dependency from an unrelated schema causes rollback without deleting that schema's records. Tests verify the unrelated row and restored session replication mode remain intact.
+
+The correction regression additionally asserts the exact actor, reason, location, stamp delta and zero reward delta, and rejects a correction that would cross a reward threshold. No merchant policy was changed, and no application schema migration was added by this follow-up.
+
+**Validated source commit: `ed4bac1d14da21f26539eb3c5b0d76181b470f5e`.** `npm run verify:pilot` completed all nine commands with exit 0: typecheck, build, **47** unit/integration tests, **14** hosted tests, browser, scanner, upgrade-browser, UI, and PWA. Environment: Node 24.19.0, isolated PostgreSQL 18.4 on loopback port 55449, Chromium, synthetic fixtures only. This supersedes the original test counts below; original evidence is retained as history. Detailed local logs remain ignored under `data/readiness-verification/`.
+
+External gates remain unchanged: actual staging/provider isolation, real production backup/authorized recovery, monitor notification delivery, commercial plan review, merchant decisions and real-device testing. The feature branch's preview exclusion remains mandatory. Earlier GitHub API access was forbidden; this follow-up does not claim a remote PR or CI result.
+
+## Original verification evidence
+
 
 Validated source commit: **`d6a8b079276c7cc56d13bed0eb3035f85dddf394`**. Documentation/release-artifact exclusions are committed afterwards without application changes. Environment: Linux, Node **24.19.0**, npm **11.9.0**, disposable PostgreSQL **18.4**, `/usr/bin/chromium`, synthetic data only. CI targets PostgreSQL 17; hosted CI itself was not run during that validation; later publication does not imply CI passed.
 
@@ -67,10 +81,10 @@ No lint script exists. No paid resources, production data, external messages, li
 
 ## Final review boundary and remaining launch actions
 
-- Read-only Vercel metadata was inspected; production values were not decrypted and no project settings changed. Shared production/preview DB metadata is sufficient to block pushing, not evidence of safe staging.
+- Read-only Vercel metadata was inspected; production values were not decrypted and no project settings changed. Shared production/preview DB metadata still blocks enabling previews; it is not evidence of safe staging. Code-only pushes are permitted by the later explicit authorization and branch exclusion.
 - Remote main was checked with `git ls-remote` and remains the base commit `997298a`. The original checkout remains clean on `fix/hosting-configuration` at its original source commit. At the original handoff no push, merge or deployment was performed. The subsequent authorized push is documented below; no merge or deployment occurred. No production database connection or data inspection occurred, so live records/behavior are not claimed to have been checked.
 - See `pilot-operations.md` for migration-first deployment, backup/restore and incident steps; `pilot-api-contract.md` for contract/policy boundaries; `pilot-manual-acceptance.md` for partner device checks; `backend-pilot-pr.md` for the prepared draft PR body and later commands.
-- Ready for **local code review**, not an approved production release. External owners: platform operator for isolated preview config/production backup/alerts/plans; merchant for manager-reporting scope, onboarding mode and correction limits; partner for real devices/accessibility; separate reviewer for PR approval and protected-main checks.
+- Ready for **code review on the feature branch**, not an approved production release. External owners: platform operator for isolated preview config/production backup/alerts/plans; merchant for manager-reporting scope, onboarding mode and correction limits; partner for real devices/accessibility; separate reviewer for PR approval and protected-main checks.
 
 
 ## Authorized code-only publication follow-up

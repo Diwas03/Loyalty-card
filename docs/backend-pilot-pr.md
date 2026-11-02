@@ -11,7 +11,7 @@ Main already includes confirmed purchases, vouchers, an immutable ledger, transf
 
 ## Validation
 
-At source commit `d6a8b079276c7cc56d13bed0eb3035f85dddf394`: typecheck/build pass, 42 unit/integration tests pass, 14 hosted tests pass, and browser/scanner/upgrade-browser/UI/PWA scripts all pass on disposable loopback PG 18.4/Node 24/Chromium. Synthetic serialized backup/restore, upstream migration preservation and repeatable local seed/startup are verified. CI is configured for isolated PG17 with no deployment credentials; remote CI has not run. See `backend-pilot-readiness.md` for exact evidence and limitations.
+Latest validated source commit `ed4bac1d14da21f26539eb3c5b0d76181b470f5e`: all nine checks pass—typecheck, build, **47** unit/integration tests, **14** hosted tests, browser, scanner, upgrade-browser, UI and PWA. This follow-up closes equivalent-URI fingerprint and destructive restore-cascade gaps, and strengthens correction audit/bounds tests. Synthetic serialized restore, upstream migration preservation and prior local seed/startup are verified. Tests use disposable loopback PG18.4/Node24/Chromium; CI is configured for isolated PG17, but no remote CI result is claimed. See `backend-pilot-readiness.md` for current and historical evidence.
 
 ## Publication without a preview
 
