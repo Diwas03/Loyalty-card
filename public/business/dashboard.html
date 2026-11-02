@@ -34,12 +34,11 @@
           <div id="balance" class="balance">Search for a customer or scan their card to get started.</div>
 
           <div class="actions" id="customer-actions">
-            <button id="purchase" disabled="">Record qualifying purchase</button>
             <button id="redeem" class="secondary" disabled="">
               Redeem one reward
             </button>
           </div><div id="customer-outcome" role="status" aria-live="polite"></div>
-          <small>Scan or look up a card, verify the paid purchase, then record it. Scanning alone never earns stamps.</small>
+          <small>Each scan adds one stamp immediately. Start the scanner again and scan the card for another stamp. Manual lookup does not add stamps.</small>
         </section><details id="customer-secondary-actions" class="secondary-actions"><summary>More customer actions</summary><a id="customer-link" hidden="" target="_blank" rel="noopener">Open private customer card ↗</a></details>
         <section>
           <h2>Recent activity</h2>
@@ -55,7 +54,7 @@
         </details>
 </div></div></div><div id="panel-scan" class="dashboard-panel narrow-panel" role="tabpanel" aria-labelledby="tab-scan" hidden="">        <section id="scan-panel">
           <h2>Identify a membership</h2>
-          <p id="scan-help">Scan to identify a customer, then confirm a paid qualifying purchase.</p>
+          <p id="scan-help">Scan a customer’s membership QR to add one stamp instantly. Scan again for each additional stamp.</p>
           <p id="scan-feedback" aria-live="polite" hidden="" role="status"></p>
           <button id="scan" disabled="">Start camera</button><button id="stop" class="secondary" hidden="">Stop camera</button><video id="video" muted="" playsinline="" hidden=""></video>
           <form id="lookup" aria-describedby="scan-help">

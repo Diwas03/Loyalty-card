@@ -256,7 +256,6 @@ async function lookup() {
   if (pending && pending.id !== requested) throw Error("Resolve the pending transaction for the previous member before selecting another card.");
   if(selected !== requested) { outcome(""); message(""); $("#customer-secondary-actions").open=false; $("#correction")?.reset(); }
   $("#redeem").disabled = true;
-  $("#purchase").disabled = true;
   selected = undefined;
   selectedMember = undefined;
   $("#customer-link").hidden = true;
@@ -274,7 +273,6 @@ async function lookup() {
   selected = m.id;
   selectedMember = m;
   $("#customer-secondary-actions").hidden = false;
-  $("#purchase").disabled = false;
   $("#customer-name").textContent = m.name;
   $("#balance").textContent =
     `${m.stamps} / ${m.stampGoal} stamps · ${m.rewards} available rewards`;
@@ -522,7 +520,7 @@ async function loadReport() {
 }
 
 async function recordAction(action, automatic = false) {
-    if (!selected || busy || selectedMember?.id !== selected) return;
+    if (!selected || busy || selectedMember?.id !== selected || (action === "purchase" && !automatic)) return;
     const id = selected;
     const actionMember = selectedMember;
     if (pending && (pending.id !== id || pending.action !== action)) {
@@ -531,28 +529,22 @@ async function recordAction(action, automatic = false) {
       );
       return;
     }
-    if (
-      !confirm(
-        action === "purchase"
-          ? `Record one qualifying paid purchase for ${selectedMember.name}?\n${currentShopName} · ${currentLocationName}\nCurrent balance: ${selectedMember.stamps}/${selectedMember.stampGoal} stamps, ${selectedMember.rewards} rewards.`
-          : `Redeem one ${selectedMember.rewardLabel || "reward"} for ${selectedMember.name}?\n${currentShopName} · ${currentLocationName}\nThis consumes one available reward and earns no stamp.`,
-      )
-    )
-      return;
+    if (action === "redeem" && !confirm(
+      `Redeem one ${selectedMember.rewardLabel || "reward"} for ${selectedMember.name}?\n${currentShopName} · ${currentLocationName}\nThis consumes one available reward and earns no stamp.`,
+    )) return;
     if (!pending) {
       pending = { id, action, key: crypto.randomUUID(), source: automatic ? "scan" : "manual" };
       sessionStorage.setItem("coffeePending", JSON.stringify(pending));
     }
     busy = true;
     let saved = false;
-    $("#purchase").disabled = true;
     $("#redeem").disabled = true;
     try {
       const scanned = action === "purchase";
       const result = await api(`/api/staff/members/${id}/${scanned ? "scan" : action}`, {
         method: "POST",
         headers: { "Idempotency-Key": pending.key },
-        body: JSON.stringify({ confirm: true }),
+        body: JSON.stringify(scanned ? {} : { confirm: true }),
       });
       saved = true;
       pending = null;
@@ -561,7 +553,7 @@ async function recordAction(action, automatic = false) {
       await lookup();
       await search();
       outcome(scanned
-        ? (result.awarded ? `One stamp added for ${actionMember.name}. Confirmed balance: ${result.stamps}/${result.stampGoal} stamps · ${result.rewards} rewards.` : "This card was just recorded. No extra stamp was added. Wait at least 5 seconds before recording another paid purchase.")
+        ? (result.awarded ? `One stamp added for ${actionMember.name}. Confirmed balance: ${result.stamps}/${result.stampGoal} stamps · ${result.rewards} rewards.` : "This request was already handled; no additional stamp was added.")
         : `Reward redeemed for ${actionMember.name}. Confirmed balance: ${result.stamps}/${result.stampGoal} stamps · ${result.rewards} rewards.`);
     } catch (e) {
       busy = false;
@@ -581,10 +573,8 @@ async function recordAction(action, automatic = false) {
             " Your request key is retained; retry the same action if the response was lost.",
         );
       $("#redeem").disabled = !selected || !selectedMember?.rewards;
-      $("#purchase").disabled = !selected;
     }
   };
-$("#purchase").onclick = () => recordAction("purchase");
 $("#redeem").onclick = () => recordAction("redeem");
 $("#scan").onclick = async () => {
   if (busy || !role || $("#scan").disabled) return;
@@ -598,7 +588,7 @@ $("#scan").onclick = async () => {
   $("#scan").disabled = true;
   try {
     controls?.stop();
-    scanFeedback("Point the camera at the customer’s membership QR for " + currentShopName + ". Scanning identifies the card. Confirm the paid purchase after checking it.");
+    scanFeedback("Point the camera at the customer’s membership QR for " + currentShopName + ". Each scan adds one stamp immediately. Start the scanner again to add another.");
     const scannerControls = await new ZXingBrowser.BrowserQRCodeReader().decodeFromVideoDevice(
       undefined,
       "video",
@@ -615,7 +605,7 @@ $("#scan").onclick = async () => {
           const found = await lookup();
           if(!found) return;
           if (generation !== scanGeneration) return;
-          message("Card identified. Check the customer and confirm a qualifying purchase.");
+          await recordAction("purchase", true);
           showTab("customers");
           focusCustomer();
         } catch (error) {
@@ -747,7 +737,7 @@ window.addEventListener("pagehide", () => { controls?.stop(); staffSession = und
     }
     if (scanStamping) {
       $("#scan").textContent = "Start QR scanner";
-      $("#scan-help").textContent = "Scan a card or use manual lookup. Verify the paid purchase, then choose Record qualifying purchase. Repeat requests are protected against duplicate credit.";
+      $("#scan-help").textContent = "Each scan adds one stamp immediately. Scan the customer card again for another stamp. Manual lookup never adds stamps. Retried requests cannot add duplicate credit.";
     }
     if (role === "owner") {
       if (me.accountsEnabled) $("#accounts-section").hidden = false;

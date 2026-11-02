@@ -59,5 +59,10 @@
       "destination": "/business/dashboard.html",
       "permanent": false
     }
-  ]
+  ],
+  "git": {
+    "deploymentEnabled": {
+      "release/instant-scan-stamps": false
+    }
+  }
 }

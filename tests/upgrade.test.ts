@@ -46,7 +46,7 @@ test("confirmed purchases and compensating corrections reconcile an immutable te
     const cashier = request.agent(app).set("Authorization", "Bearer " + login.body.token);
     const m = (await db.query("SELECT coffee.enroll_customer('Member',NULL,'default') AS m")).rows[0].m;
     const url = `/api/staff/members/${m.id}/scan`, key = randomUUID();
-    await a.post(url).set("Idempotency-Key", key).send({}).expect(400);
+    await a.post(url).set("Idempotency-Key", key).send({}).expect(200);
     await Promise.all([1,2].map(() => a.post(url).set("Idempotency-Key",key).send({ confirm: true }).expect(200)));
     const adjustment = `/api/staff/members/${m.id}/adjustment`;
     const body = { delta: -1, reason: "Duplicate purchase correction", confirm: true };

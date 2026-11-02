@@ -23,7 +23,7 @@ try {
   assert.equal(manifest.display, 'standalone');
   for (const icon of manifest.icons) assert.equal((await context.request.get(base + icon.src)).status(), 200);
   await page.goto(base);
-  await page.getByRole('link', { name: 'Test Shop', exact: true }).click();
+  await page.getByRole('link', { name: 'Test Shop, Member card, Customer, 2 of 8 stamps, 0 rewards', exact: true }).click();
   await page.locator('#card-progress').waitFor();
   assert.equal(new URL(page.url()).searchParams.get('member'), id);
   const otherId = '87654321-1234-1234-1234-123456789abc';
@@ -33,7 +33,7 @@ try {
   await page.goto(base);
   await page.locator('.wallet-card').nth(1).waitFor();
   assert.equal(await page.locator('.wallet-card').count(), 2);
-  await page.getByRole('link', { name: 'Test Shop', exact: true }).click();
+  await page.getByRole('link', { name: 'Test Shop, Member card, Customer, 2 of 8 stamps, 0 rewards', exact: true }).click();
   await page.locator('#card-progress').waitFor();
   assert.equal(await page.locator('#card-progress').textContent(), '2 / 8 stamps');
   await page.evaluate(() => {
@@ -42,6 +42,7 @@ try {
     event.userChoice = Promise.resolve({ outcome: 'accepted' });
     window.dispatchEvent(event);
   });
+  await page.locator('#installation-help > summary').click();
   await page.getByRole('button', { name: 'Install loyalty app' }).click();
   await context.setOffline(true);
   await page.reload();

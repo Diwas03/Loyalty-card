@@ -51,19 +51,13 @@ DECLARE m coffee.members; op coffee.operations; goal int; result jsonb; BEGIN
  result=jsonb_build_object('id',m.id,'stamps',m.stamps,'rewards',m.rewards,'version',m.version,'stampGoal',goal);
  INSERT INTO coffee.operations VALUES(p_key,p_id,p_kind,result,p_actor,(extract(epoch FROM clock_timestamp())*1000)::bigint);RETURN result;END $$;
 CREATE OR REPLACE FUNCTION coffee.scan_purchase(p_id text,p_key text,p_actor text) RETURNS jsonb LANGUAGE plpgsql AS $$
-DECLARE prior coffee.scan_requests; recent bigint; now_ms bigint; result jsonb; BEGIN
+DECLARE prior coffee.scan_requests; now_ms bigint; result jsonb; BEGIN
  PERFORM pg_advisory_xact_lock(7342101);
  SELECT * INTO prior FROM coffee.scan_requests WHERE key=p_key;
  IF FOUND THEN IF prior.member_id<>p_id THEN RAISE EXCEPTION 'Idempotency key already used for another action';END IF;RETURN prior.result;END IF;
  IF EXISTS(SELECT 1 FROM coffee.operations WHERE key=p_key AND (member_id<>p_id OR kind<>'purchase')) THEN RAISE EXCEPTION 'Idempotency key already used for another action';END IF;
  now_ms=(extract(epoch FROM clock_timestamp())*1000)::bigint;
- SELECT max(created_at) INTO recent FROM coffee.scan_requests WHERE member_id=p_id AND awarded=true;
- IF recent IS NOT NULL AND recent>now_ms-5000 THEN
-  SELECT jsonb_build_object('id',m.id,'stamps',m.stamps,'rewards',m.rewards,'version',m.version,'stampGoal',p.stamp_goal,'awarded',false) INTO result FROM coffee.members m JOIN coffee.shops p ON p.id=m.shop_id WHERE m.id=p_id;
-  IF result IS NULL THEN RAISE EXCEPTION 'Membership not found';END IF;
- ELSE
-  result=coffee.mutate_member(p_id,'purchase',p_key,p_actor)||jsonb_build_object('awarded',true);
- END IF;
+ result=coffee.mutate_member(p_id,'purchase',p_key,p_actor)||jsonb_build_object('awarded',true);
  INSERT INTO coffee.scan_requests VALUES(p_key,p_id,result,now_ms,(result->>'awarded')::boolean);
  RETURN result;
 END $$;

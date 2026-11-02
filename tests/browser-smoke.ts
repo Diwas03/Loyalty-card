@@ -46,10 +46,9 @@ try {
     await page.locator("#tab-scan").click();
     await page.locator("#scan").click();
     await page.evaluate(id => (window as any).scanTestFrame(id), new URL(customer.url()).searchParams.get("member"));
-    await page.locator("#purchase").waitFor({state:"visible"});
-    await page.locator("#purchase").click();
+    await page.waitForFunction(() => !(document.querySelector("#scan") as HTMLButtonElement).disabled);
   };
-  assert.equal(await page.locator("#purchase").count(), 1);
+  assert.equal(await page.locator("#purchase").count(), 0);
   let loseOnce = true;
   await page.route("**/api/staff/members/*/scan", async (route) => {
     if (loseOnce) {
@@ -76,7 +75,6 @@ try {
       document.querySelector("#card-progress")?.textContent === "1 / 8 stamps",
   );
   for (let i = 2; i <= 8; i++) {
-    await db.query("UPDATE operations SET created_at=created_at-6000 WHERE kind='purchase'");
     await scan();
     await page.waitForFunction(
       (expected) =>
