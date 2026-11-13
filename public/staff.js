@@ -86,7 +86,7 @@ function text(tag, value, className) {
 }
 let currentTab, dashboardEnabled = false;
 const availableTabs = new Set(["customers", "scan"]);
-const sectionNames = { overview: "Overview", customers: "Rewards", scan: "Scan and lookup", design: "Programs & cards", referrals: "Referrals", team: "Team & locations", reports: "Reports" };
+const sectionNames = { overview: "Overview", customers: "Rewards", scan: "Scan and lookup", design: "Programs & cards", referrals: "Referrals", team: "Team", reports: "Reports" };
 const narrowNavigation = matchMedia("(max-width: 900px)");
   $("#preview-disclosure").open = !narrowNavigation.matches;
 function configureNavigation() {
@@ -109,7 +109,7 @@ function showTab(key, focus = false) {
   }
   currentTab = key;
   $("#section-heading").textContent = sectionNames[key];
-  $("#section-description").textContent = ({overview:"Your latest shop activity, all in one place.",customers:"Recognise your regulars. Review available rewards and confirm each redemption.",scan:"One scan. One stamp. Keep your counter moving.",design:"Make your card feel like your shop. Publish your address, appearance and reward rules.",referrals:"See how your customers help your community grow.",team:"Give your team the access and work locations they need.",reports:"Understand recorded activity with clear, auditable numbers."})[key];
+  $("#section-description").textContent = ({overview:"Your latest shop activity, all in one place.",customers:"Recognise your regulars. Review available rewards and confirm each redemption.",scan:"One scan. One stamp. Keep your counter moving.",design:"Make your card feel like your shop. Publish your address, appearance and reward rules.",referrals:"See how your customers help your community grow.",team:"Manage your staff and their counter access.",reports:"Understand recorded activity with clear, auditable numbers."})[key];
   $("#current-section").textContent = sectionNames[key];
   $(".quick-scan").hidden = key === "scan" || key === "customers";
   $("#section-description").hidden = key === "customers";
@@ -124,7 +124,7 @@ function showTab(key, focus = false) {
   if (key === "overview") loadOverview().catch(error => message(error.message));
   if (key === "referrals") loadReferrals().catch(error => message(error.message));
   if (key === "reports") loadReport();
-  if (key === "team" && $("#team-management")) loadTeam();
+  if (["team","design"].includes(key) && $("#team-management")) loadTeam();
 }
 $(".business-tabs").addEventListener("click", event => {
   const button = event.target.closest("[data-tab]");
@@ -412,8 +412,11 @@ async function installWorkspacePicker(me) {
 }
 function installTeamTools(){
   const section=document.createElement("section");section.id="team-management";
-  section.innerHTML='<h2>Team members</h2><p>Owners manage settings and access. Managers operate the counter, correct progress and read reports. Cashiers record purchases and redeem rewards at assigned locations.</p><p id="team-status" role="status"></p><div id="team-list"></div><details id="locations-management"><summary>Manage locations</summary><ul id="location-list"></ul><form id="location-create"><label>New location name<input name="name" maxlength="80" required></label><button>Create location</button></form></details><details id="existing-account-invite"><summary>Invite an existing staff account</summary><form id="team-invite"><p>This private invitation works once within 48 hours and requires an existing signed-in staff account.</p><label>Role<select name="role"><option value="cashier">Cashier</option><option value="manager">Manager</option></select></label><div id="invite-locations"></div><button>Create invitation</button><label>Private invitation link<input name="link" readonly></label></form></details>';
+  section.innerHTML='<h2>Team members</h2><p>Owners manage settings and access. Managers operate the counter, correct progress and read reports. Cashiers record purchases and redeem rewards at assigned locations.</p><p id="team-status" role="status"></p><div id="team-list"></div><details id="existing-account-invite"><summary>Invite an existing staff account</summary><form id="team-invite"><p>This private invitation works once within 48 hours and requires an existing signed-in staff account.</p><label>Role<select name="role"><option value="cashier">Cashier</option><option value="manager">Manager</option></select></label><div id="invite-locations"></div><button>Create invitation</button><label>Private invitation link<input name="link" readonly></label></form></details>';
   $("#panel-team").append(section);
+  const counters=document.createElement("details");counters.id="locations-management";
+  counters.innerHTML='<summary>Advanced: service counters</summary><p>Optional counters for staff access and activity records. The public address above is what customers see on their cards.</p><ul id="location-list"></ul><form id="location-create"><label>Counter name<input name="name" maxlength="80" required></label><button>Create counter</button></form>';
+  $("#shop-location-section").append(counters);
   const newAccount=document.createElement("details");newAccount.id="new-staff-account";newAccount.append(text("summary","Create a new staff account"),$("#accounts-section"));section.append(newAccount);
   $("#location-create").onsubmit=async event=>{
     event.preventDefault();const form=event.target,button=form.querySelector("button");button.disabled=true;
@@ -427,7 +430,7 @@ function installTeamTools(){
   };
 }
 function locationChoices(locations, selected = []) {
-  const fieldset=document.createElement("fieldset");fieldset.className="location-options";fieldset.append(text("legend","Assigned locations"));
+  const fieldset=document.createElement("fieldset");fieldset.className="location-options";fieldset.append(text("legend","Counter access"));
   for(const loc of locations){const label=text("label",loc.name),input=document.createElement("input");input.type="checkbox";input.name="locations";input.value=loc.id;input.checked=selected.includes(loc.id);input.className="inline-check";label.prepend(input);fieldset.append(label);}
   return fieldset;
 }
@@ -440,7 +443,7 @@ async function loadTeam(){
     $("#location-list").replaceChildren(...data.locations.map(loc=>text("li",loc.name+(loc.active ? "" : " · Inactive"))));
     for(const member of data.members){
       const entry=document.createElement("details");entry.className="team-entry";
-      const summary=document.createElement("summary");summary.append(text("strong",member.full_name||member.username),text("span",member.role+" · "+(member.enabled?"Enabled":"Disabled"),"state-badge"),text("small",member.role==="owner"?"All business locations":data.locations.filter(loc=>member.locations.includes(loc.id)).map(loc=>loc.name).join(", ")||"No assigned locations"),text("span","Edit access","edit-hint"));entry.append(summary);
+      const summary=document.createElement("summary");summary.append(text("strong",member.full_name||member.username),text("span",member.role+" · "+(member.enabled?"Enabled":"Disabled"),"state-badge"),text("small",member.role==="owner"?"All service counters":data.locations.filter(loc=>member.locations.includes(loc.id)).map(loc=>loc.name).join(", ")||"No assigned counters"),text("span","Edit access","edit-hint"));entry.append(summary);
       entry.addEventListener("toggle",()=>{if(entry.open)for(const other of container.querySelectorAll("details.team-entry"))if(other!==entry)other.open=false;});
       const form=document.createElement("form");form.className="team-member";form.append(text("p",`Account: ${member.username}. Saving role/access changes revokes this person’s active sessions.`));
       const roleLabel=text("label","Business role"),roleSelect=document.createElement("select");roleSelect.name="role";
@@ -453,7 +456,7 @@ async function loadTeam(){
         catch(error){message(error.message,true);}finally{button.disabled=false;}};
       entry.append(form);container.append(entry);
     }
-  }catch(error){container.textContent=error.message;}
+  }catch(error){container.textContent=error.message;$("#location-list").replaceChildren(text("li","Could not load counters. "+error.message));}
   finally{container.setAttribute("aria-busy","false");}
 }
 function installPilotTools() {
