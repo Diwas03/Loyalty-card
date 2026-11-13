@@ -1,0 +1,1071 @@
+/* Boutique wallet system: locally hosted type, warm alabaster and emerald. */
+@font-face {
+  font-family: Inter;
+  src: url("/fonts/inter-latin.woff2") format("woff2");
+  font-weight: 100 900;
+  font-display: swap;
+}
+@font-face {
+  font-family: Jakarta;
+  src: url("/fonts/jakarta-latin.woff2") format("woff2");
+  font-weight: 200 800;
+  font-display: swap;
+}
+@font-face {
+  font-family: JetBrains;
+  src: url("/fonts/mono-latin.woff2") format("woff2");
+  font-weight: 100 800;
+  font-display: swap;
+}
+:root {
+  --ink: #0f172a;
+  --muted: #64748b;
+  --paper: #fafaf9;
+  --surface: #fff;
+  --line: #e2e8f0;
+  --green: #166a58;
+  --sage: #eff6f2;
+  --accent: #e4ece8;
+  --radius: 16px;
+  font-family: Inter, system-ui, sans-serif;
+  background: var(--paper);
+  color: var(--ink);
+}
+h1,
+h2,
+h3,
+.auth-brand,
+nav a:first-child {
+  font-family: Jakarta, Inter, sans-serif;
+}
+button,
+.button,
+input,
+select,
+summary {
+  min-height: 44px;
+}
+button,
+.button {
+  border-radius: 9px;
+  transition:
+    background 200ms cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 200ms cubic-bezier(0.16, 1, 0.3, 1),
+    transform 200ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+button:active:not(:disabled),
+.button:active {
+  transform: scale(0.98);
+}
+button:hover:not(:disabled),
+.button:hover {
+  box-shadow: 0 4px 14px -3px #0f172a15;
+}
+:focus-visible {
+  outline: 3px solid #298872;
+  outline-offset: 4px;
+}
+input,
+select,
+textarea {
+  border-color: #cbd5e1;
+  background: #fff;
+  border-radius: 9px;
+}
+.staff-page .workspace-heading h1 {
+  font-family: Jakarta, Inter, sans-serif;
+  font-size: 36px;
+  font-weight: 600;
+  letter-spacing: -1.5px;
+}
+.staff-page .section-navigation {
+  background: #182925;
+  border-radius: 14px;
+}
+.staff-page .business-tabs [role="tab"][aria-selected="true"] {
+  background: #e0eee6;
+  color: #184c3d;
+}
+.staff-page .business-tabs [role="tab"] {
+  min-height: 46px;
+  font-size: 13px;
+}
+.staff-page .workspace-topbar a:first-child {
+  color: var(--ink);
+}
+.counter-welcome {
+  background: linear-gradient(120deg, #f2f7f4, #e9f1ed);
+  border-color: #dae7df;
+}
+.counter-welcome h2 {
+  font-family: Jakarta, Inter, sans-serif;
+  font-size: 23px;
+  font-weight: 550;
+  letter-spacing: -0.8px;
+}
+.overview-metrics {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.staff-page .metric {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  box-shadow: 0 4px 20px -2px #0f172a0d;
+  min-height: 175px;
+}
+.staff-page .metric[data-metric="customers"] {
+  background: #fff;
+  color: var(--ink);
+  border-color: var(--line);
+}
+.staff-page .metric[data-metric="customers"] small {
+  color: var(--muted);
+}
+.staff-page .metric[data-metric="available_rewards"] {
+  background: #f0f7f3;
+  border-color: #d6e6dc;
+}
+.staff-page .metric > strong {
+  font-family: JetBrains, monospace;
+  font-size: 34px;
+  letter-spacing: -1.8px;
+  font-weight: 450;
+}
+.staff-page .metric small {
+  color: var(--muted);
+  font-size: 11px;
+}
+.staff-page .metric > span:first-child {
+  font-size: 12px;
+}
+.staff-page .metric-action {
+  min-width: 0;
+}
+.staff-page .dashboard-panel section,
+#shop-location-section,
+.staff-page .settings-forms > form {
+  background: #fff;
+  border-color: var(--line);
+  border-radius: 13px;
+  box-shadow: 0 4px 20px -2px #0f172a08;
+}
+.staff-page .dashboard-panel section h2,
+#customer-search h2,
+#customer-name {
+  font-family: Jakarta, Inter, sans-serif;
+  font-weight: 550;
+  letter-spacing: -0.5px;
+}
+.staff-page .metric-action:hover {
+  background: #e6f2ea;
+}
+#customer-search h2 {
+  font-size: 22px;
+}
+.reward-confirm {
+  background: var(--green);
+  color: #fff;
+  border: 1px solid var(--green);
+  min-height: 44px;
+  font-size: 13px;
+}
+.staff-page .reward-row {
+  padding: 20px 0;
+}
+.staff-page .customer-row-meta {
+  font-size: 12px;
+  color: var(--muted);
+}
+.balance,
+.member-progress,
+#card-progress,
+.sample-wallet-card small,
+.showcase-count,
+input[readonly],
+.member-code {
+  font-family: JetBrains, monospace;
+  font-variant-numeric: tabular-nums;
+}
+.customer-page > nav {
+  position: sticky;
+  top: 0;
+  z-index: 15;
+  background: #fafaf9e8;
+  backdrop-filter: blur(12px);
+  min-height: 86px;
+  border-color: var(--line);
+  gap: 20px;
+}
+.customer-page > nav a:first-child {
+  font-weight: 750;
+  letter-spacing: -1px;
+  color: var(--ink);
+  font-size: 25px;
+}
+.wordmark-dot {
+  color: var(--green);
+  margin-left: -11px;
+}
+.customer-page > nav #add-card {
+  font-size: 13px;
+  padding: 11px 18px;
+  white-space: nowrap;
+}
+.wallet-connection {
+  font-size: 11px;
+  color: #4f7062;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: #f0f5f2;
+  border: 1px solid #dfe9e2;
+  padding: 5px 10px;
+  border-radius: 20px;
+  white-space: nowrap;
+}
+.wallet-connection::before {
+  content: "";
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #5e9c76;
+}
+.wallet-connection[data-offline="true"] {
+  color: #875132;
+  background: #faf0e6;
+  border-color: #eadccc;
+}
+.wallet-connection[data-offline="true"]::before {
+  background: #b57c4e;
+}
+.customer-intro h1 {
+  font-family: Jakarta, Inter, sans-serif;
+  font-weight: 550;
+  font-size: 46px;
+  letter-spacing: -1.9px;
+}
+.wallet-toolbar {
+  border-color: var(--line);
+  margin-bottom: 24px;
+}
+.wallet-toolbar h2 {
+  font-size: 16px;
+  font-weight: 600;
+}
+.wallet-toolbar p {
+  font-size: 13px;
+}
+.wallet-intro-copy {
+  font-size: 14px;
+  line-height: 1.9;
+  max-width: 53ch;
+}
+.wallet-grid {
+  gap: 24px;
+}
+.wallet-card {
+  position: relative;
+  border: 1px solid #ffffff50;
+  border-radius: 18px;
+  box-shadow: 0 4px 20px -2px #0f172a16;
+  transition:
+    transform 200ms cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 200ms cubic-bezier(0.16, 1, 0.3, 1);
+  overflow: hidden;
+}
+.card {
+  position: relative;
+  background:
+    radial-gradient(ellipse at 90% 0%, #ffffff1a, transparent 55%),
+    linear-gradient(135deg, #ffffff09, #0000000c), var(--shop-color, #193d32);
+  border-radius: 18px;
+}
+.wallet-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 14px 35px -10px #0f172a30;
+}
+.wallet-card .member-progress {
+  font-family: JetBrains, monospace;
+  font-size: 25px;
+  font-weight: 450;
+  letter-spacing: -1px;
+}
+.wallet-card .card-label {
+  border-color: #ffffff30;
+  border-bottom-width: 1px;
+  border-bottom-style: solid;
+}
+.wallet-card .wallet-card-open {
+  font-size: 12px;
+}
+.wallet-card .member-location {
+  font-size: 12px;
+}
+.card-identity {
+  background: #ffffff10;
+  border: 1px solid #ffffff20;
+  border-radius: 14px;
+  backdrop-filter: blur(12px);
+  padding: 14px;
+  margin: 22px 0 14px;
+  min-width: 0;
+}
+.identity-switches {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.card .identity-switches button {
+  color: var(--card-ink, white);
+  background: transparent;
+  border: 1px solid #ffffff30;
+  font-size: 12px;
+  padding: 8px 12px;
+  min-height: 44px;
+}
+.card .identity-switches button[aria-pressed="true"] {
+  background: #ffffff20;
+  border-color: #ffffff75;
+}
+.member-code {
+  display: block;
+  padding: 30px 4px;
+  font-size: 16px;
+  line-height: 1.9;
+  overflow-wrap: anywhere;
+  color: var(--card-ink, white);
+  text-align: center;
+  user-select: all;
+}
+.card .qr {
+  max-width: 100%;
+  border-radius: 10px;
+}
+.stamp.filled {
+  animation: stamp-arrive 220ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes stamp-arrive {
+  from {
+    transform: scale(0.9);
+  }
+  to {
+    transform: scale(1);
+  }
+}
+#member-details > section,
+#member-details > details,
+#member-details #reward-history > section,
+#member-details #reward-history > details,
+#installation-help,
+.referral-section {
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  background: #fff;
+  box-shadow: 0 4px 20px -2px #0f172a08;
+  padding: 16px 20px;
+  margin-top: 16px;
+}
+#member-details summary,
+#installation-help summary {
+  font-size: 14px;
+  display: list-item;
+  padding: 10px 0;
+  color: var(--ink);
+}
+#member-details h2,
+#referral-section h2 {
+  font-size: 19px;
+  font-weight: 550;
+  letter-spacing: -0.6px;
+}
+#member-details p,
+#member-details small,
+#referral-section p,
+#referral-section small {
+  font-size: 12px;
+  line-height: 1.85;
+  color: var(--muted);
+}
+#member-details #card-tools > p {
+  padding: 8px 10px;
+  border-radius: 7px;
+  border: 1px solid #eadfd2;
+  background: #faf5ec;
+  color: #785b3f;
+  font-size: 11px;
+}
+.wallet-first-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 45px;
+  padding: 40px !important;
+  align-items: center;
+  background: #fff !important;
+  border: 1px solid var(--line) !important;
+  border-radius: 18px !important;
+  box-shadow: 0 4px 20px -2px #0f172a0d;
+}
+.sample-wallet-card {
+  background:
+    radial-gradient(ellipse at 95% 5%, #5e9882, transparent 65%),
+    linear-gradient(135deg, #204f43, #153e34);
+  color: #fff;
+  border: 1px solid #396355;
+  border-radius: 17px;
+  padding: 29px 25px;
+  transform: rotate(-3deg);
+  box-shadow: 0 16px 30px -12px #1a433a66;
+}
+.sample-wallet-card > span {
+  display: block;
+  font-size: 8px;
+  letter-spacing: 2px;
+  color: #cbddd5;
+}
+.sample-wallet-card > strong {
+  display: block;
+  font-family: Jakarta, Inter, sans-serif;
+  font-weight: 500;
+  font-size: 28px;
+  line-height: 1.4;
+  letter-spacing: -1px;
+  margin: 20px 0;
+}
+.sample-stamps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin: 20px 0;
+}
+.sample-stamps > * {
+  display: grid;
+  place-items: center;
+  width: 23px;
+  height: 23px;
+  border-radius: 50%;
+  border: 1px dashed #ffffff66;
+  font-size: 12px;
+}
+.sample-stamps b {
+  background: #c8dbce;
+  color: #244d3b;
+  border: 1px solid #c8dbce;
+}
+.sample-wallet-card small {
+  font-size: 11px;
+  color: #d6e4dc;
+}
+.first-card-copy h2 {
+  font-size: 28px !important;
+  font-weight: 550;
+  line-height: 1.35;
+  letter-spacing: -1px;
+}
+.first-card-copy p {
+  font-size: 13px;
+  line-height: 1.85;
+  color: var(--muted);
+  margin: 15px 0 20px;
+}
+.first-card-copy .workspace-eyebrow {
+  font-size: 8px;
+  letter-spacing: 1px;
+  color: var(--green);
+  display: block;
+}
+.first-card-copy small {
+  font-size: 11px;
+  color: var(--muted);
+  display: block;
+  margin-top: 20px;
+}
+.first-card-copy .actions {
+  gap: 10px;
+}
+.first-card-copy button {
+  font-size: 12px;
+}
+#add-card-dialog {
+  padding: 30px;
+  border: 1px solid #ffffffb0;
+  border-radius: 18px;
+  background: #ffffffef;
+  backdrop-filter: blur(12px);
+  max-width: 540px;
+  width: calc(100% - 32px);
+  box-shadow: 0 25px 80px #0f172a30;
+  color: var(--ink);
+}
+#add-card-dialog::backdrop {
+  background: #0f172a70;
+  backdrop-filter: blur(4px);
+}
+#add-card-dialog h2 {
+  font-size: 23px;
+  font-weight: 600;
+  letter-spacing: -0.8px;
+}
+#add-card-dialog > p,
+#add-card-dialog > small {
+  font-size: 12px;
+  line-height: 1.8;
+  color: var(--muted);
+}
+.wallet-dialog-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 5px;
+  padding: 5px;
+  background: #f1f5f4;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  margin: 23px 0;
+}
+.wallet-dialog-tabs [role="tab"] {
+  min-height: 44px;
+  background: transparent;
+  border: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+.wallet-dialog-tabs [aria-selected="true"] {
+  background: #fff;
+  color: var(--green);
+  box-shadow: 0 2px 8px #0f172a0d;
+}
+.camera-frame {
+  position: relative;
+  min-height: 220px;
+  background: #15251f;
+  border-radius: 13px;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  margin: 16px 0;
+}
+.camera-frame video {
+  width: 100%;
+  height: 250px;
+  object-fit: cover;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+}
+.camera-guides {
+  position: absolute;
+  inset: 22px;
+  border: 1px solid #ffffff90;
+  border-radius: 13px;
+  pointer-events: none;
+}
+.camera-guides::before,
+.camera-guides::after {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  width: 35px;
+  height: 35px;
+  border: 3px solid #c8ead3;
+  border-bottom: 0;
+  border-right: 0;
+  border-top-left-radius: 13px;
+}
+.camera-guides::after {
+  inset: auto -2px -2px auto;
+  transform: rotate(180deg);
+}
+.login-page {
+  max-width: none;
+  margin: 0;
+  padding: 0;
+  background: #fafaf9;
+  color: var(--ink);
+}
+.auth-shell {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  min-height: 100svh;
+}
+.auth-form-column {
+  min-width: 0;
+  padding: 38px clamp(26px, 5.8vw, 90px);
+  display: flex;
+  flex-direction: column;
+}
+.login-page .auth-brand {
+  font-size: 23px;
+  font-weight: 700;
+  letter-spacing: -1px;
+  color: var(--ink);
+  margin: 0;
+}
+.login-page main {
+  max-width: 400px;
+  width: 100%;
+  margin: auto;
+  display: block;
+  padding: 55px 0;
+}
+.login-page .auth-header {
+  padding: 0;
+  margin: 0 0 28px;
+  text-align: left;
+}
+.login-page .auth-header h1 {
+  font-size: 32px;
+  letter-spacing: -1.3px;
+  font-weight: 600;
+  margin: 0 0 12px;
+}
+.login-page .auth-header p {
+  font-size: 13px;
+  color: var(--muted);
+}
+.login-page .auth-panel {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  box-shadow: none;
+  border-radius: 0;
+  text-align: left;
+}
+.login-page form label {
+  font-size: 12px;
+  font-weight: 550;
+  color: var(--ink);
+  margin-bottom: 17px;
+}
+.login-page input {
+  height: 47px;
+  border: 1px solid #d2dbe4;
+  padding: 11px 13px;
+  background: #fff;
+  box-shadow: 0 1px 3px #0f172a04;
+  font-size: 13px;
+}
+.login-page form > button[type="submit"] {
+  width: 100%;
+  font-size: 13px;
+  background: var(--green);
+  border-color: var(--green);
+  min-height: 47px;
+}
+.login-page .password-visibility {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 44px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 400;
+  margin: -5px 0 10px;
+}
+.login-page .password-visibility input {
+  height: 16px;
+  width: 16px;
+  min-height: 16px;
+  accent-color: var(--green);
+  margin: 0;
+  box-shadow: none;
+}
+.login-page .session-notice {
+  font-size: 11px;
+  line-height: 1.9;
+  color: var(--muted);
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: #f1f5f3;
+  margin-top: 22px;
+}
+.login-page main > p,
+.login-page main > a {
+  font-size: 12px;
+  color: var(--muted);
+  display: block;
+  margin-top: 24px;
+  text-align: center;
+}
+.login-page main > p a {
+  color: var(--green);
+  font-weight: 550;
+}
+.login-page #message {
+  font-size: 12px;
+  line-height: 1.8;
+}
+.login-page .auth-footer {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: auto;
+  text-align: left;
+  padding: 20px 0;
+}
+.auth-showcase {
+  background:
+    radial-gradient(ellipse at 90% 10%, #315c4d40, transparent 60%), #10251f;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  padding: 55px clamp(35px, 5.2vw, 85px);
+  color: #cfddd5;
+}
+.auth-showcase::before {
+  content: "";
+  position: absolute;
+  height: 700px;
+  width: 700px;
+  border-radius: 50%;
+  border: 1px solid #ffffff06;
+  top: -240px;
+  left: -200px;
+  pointer-events: none;
+}
+.showcase-inner {
+  max-width: 460px;
+  width: 100%;
+  margin: auto;
+  position: relative;
+}
+.showcase-kicker {
+  font-size: 9px;
+  letter-spacing: 2px;
+  font-weight: 500;
+  color: #a7c4b4;
+}
+.auth-showcase h2 {
+  font-family: Jakarta, Inter, sans-serif;
+  color: #eff6f1;
+  font-size: 40px;
+  line-height: 1.3;
+  font-weight: 500;
+  letter-spacing: -1.7px;
+  margin: 18px 0;
+}
+.auth-showcase > .showcase-inner > p {
+  font-size: 13px;
+  line-height: 1.85;
+  color: #a8beb2;
+  max-width: 37ch;
+}
+.showcase-card {
+  position: relative;
+  background:
+    radial-gradient(ellipse at 85% 0%, #8fba9c60, transparent 65%),
+    linear-gradient(135deg, #527d64, #264c3e);
+  border: 1px solid #8fb69d70;
+  box-shadow: 0 18px 45px #0003;
+  backdrop-filter: blur(12px);
+  border-radius: 17px;
+  padding: 26px;
+  color: #f1f5ec;
+  margin: 38px 0;
+  transform: rotate(-3deg);
+}
+.showcase-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid #ffffff25;
+  padding-bottom: 18px;
+  gap: 20px;
+}
+.showcase-card-head strong {
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: -0.3px;
+}
+.showcase-card-head span {
+  font-size: 6px;
+  letter-spacing: 1.3px;
+}
+.showcase-member {
+  display: block;
+  font-size: 12px;
+  margin: 20px 0 4px;
+}
+.showcase-count {
+  display: block;
+  font-size: 29px;
+  font-weight: 400;
+  letter-spacing: -1px;
+}
+.showcase-count small {
+  font-size: 15px;
+  letter-spacing: -0.4px;
+  font-weight: 400;
+}
+.showcase-stamps {
+  display: flex;
+  gap: 7px;
+  margin: 22px 0;
+}
+.showcase-stamps > * {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 1px dashed #ffffff70;
+  border-radius: 50%;
+  font-size: 12px;
+}
+.showcase-stamps span {
+  background: #d2e5cd;
+  color: #35533e;
+  border-style: solid;
+  border-color: #d2e5cd;
+}
+.showcase-perk {
+  font-size: 9px;
+  color: #c8dbc8;
+}
+.showcase-benefits {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+  margin: 20px 0;
+}
+.showcase-benefits strong {
+  font-size: 15px;
+  font-weight: 500;
+  color: #f0f5ed;
+  display: block;
+  margin-bottom: 5px;
+}
+.showcase-benefits span {
+  font-size: 10px;
+  color: #a8beb2;
+}
+.showcase-disclaimer {
+  font-size: 9px;
+  color: #90a99b;
+}
+body {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+@media (max-width: 1100px) {
+  .overview-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .auth-form-column {
+    padding-left: 35px;
+    padding-right: 35px;
+  }
+  .auth-showcase {
+    padding-left: 35px;
+    padding-right: 35px;
+  }
+  .auth-showcase h2 {
+    font-size: 33px;
+  }
+  .showcase-card {
+    padding: 21px;
+  }
+  .showcase-stamps {
+    gap: 5px;
+  }
+  .showcase-stamps > * {
+    width: 24px;
+    height: 24px;
+  }
+}
+@media (max-width: 900px) {
+  .auth-shell {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .auth-showcase {
+    display: none;
+  }
+  .auth-form-column {
+    padding: 30px;
+    min-height: 100svh;
+  }
+  .login-page main {
+    padding: 50px 0;
+  }
+  .wallet-first-card {
+    gap: 28px;
+    padding: 30px !important;
+  }
+  .first-card-copy h2 {
+    font-size: 25px !important;
+  }
+}
+@media (max-width: 600px) {
+  .customer-page > nav {
+    min-height: 76px;
+    gap: 10px;
+    padding-top: env(safe-area-inset-top);
+  }
+  .wallet-connection {
+    font-size: 0;
+    padding: 7px;
+    width: 23px;
+    height: 23px;
+    justify-content: center;
+    gap: 0;
+  }
+  .customer-page > nav #add-card {
+    font-size: 12px;
+    padding: 10px 12px;
+  }
+  .customer-intro h1 {
+    font-size: 36px;
+    letter-spacing: -1.5px;
+  }
+  .wallet-first-card {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 24px !important;
+    gap: 36px;
+  }
+  .sample-wallet-card {
+    max-width: 330px;
+    width: 100%;
+    margin: 7px auto;
+  }
+  .first-card-copy h2 {
+    font-size: 26px !important;
+  }
+  .first-card-copy .actions {
+    flex-wrap: wrap;
+  }
+  .first-card-copy button {
+    min-height: 44px;
+  }
+  .staff-page .workspace-heading h1 {
+    font-size: 31px;
+  }
+  .staff-page .metric > strong {
+    font-size: 31px;
+  }
+  .staff-page .metric {
+    padding: 16px;
+    min-height: 170px;
+  }
+  .reward-confirm {
+    font-size: 12px;
+  }
+  .auth-form-column {
+    padding: 25px;
+  }
+  .login-page .auth-header h1 {
+    font-size: 30px;
+  }
+  .login-page main {
+    padding: 46px 0;
+  }
+  .login-page .auth-brand {
+    font-size: 21px;
+  }
+  #add-card-dialog {
+    position: fixed;
+    inset: auto 0 0;
+    margin: 0;
+    width: 100%;
+    max-width: none;
+    max-height: 92dvh;
+    border-radius: 20px 20px 0 0;
+    padding: 24px 22px calc(24px + env(safe-area-inset-bottom));
+  }
+  #add-card-dialog h2 {
+    font-size: 21px;
+  }
+  .wallet-card .member-progress {
+    font-size: 24px;
+  }
+  .member-code {
+    font-size: 14px;
+  }
+  .wordmark-dot {
+    margin-left: -9px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}
+.card-detail-meter {
+  display: block;
+  width: 100%;
+  height: 5px;
+  accent-color: #d5e6d4;
+  border: 0;
+  border-radius: 5px;
+  margin: 14px 0 5px;
+}
+.card-detail-meter::-webkit-progress-bar {
+  background: #ffffff25;
+  border-radius: 5px;
+}
+.card-detail-meter::-webkit-progress-value {
+  background: #d5e6d4;
+  border-radius: 5px;
+}
+#referral-disclosure {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 8px 14px;
+  background: #fff;
+  min-width: 0;
+}
+#referral-disclosure summary {
+  font-size: 13px;
+  color: var(--green);
+}
+#referral-disclosure #referral-sharing {
+  padding: 14px 0;
+}
+@media (max-width: 600px) {
+  #referral-disclosure {
+    margin-top: 10px;
+  }
+}
+
+.login-page .auth-header h1 {
+  font-family: Jakarta, Inter, sans-serif;
+}
+.auth-showcase .showcase-count {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+.auth-showcase .showcase-count small {
+  display: inline;
+  color: #c8dbc8;
+  font-family: JetBrains, monospace;
+}
+.wallet-card-open::after {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-top: 1px solid currentColor;
+  border-right: 1px solid currentColor;
+  transform: rotate(45deg);
+  margin-left: 9px;
+  vertical-align: middle;
+}
+  navigation: auto;
+}
+  animation-duration: 180ms;
+}
+@media (prefers-reduced-motion: reduce) {
+    animation: none !important;
+  }
+}
+/* The empty wallet is one full-width composition, not nested placeholder cards. */
+.wallet-view .card-library{max-width:none;padding:0;border:0;background:transparent}
+.wallet-first-card{text-align:left}
+.wallet-first-card .sample-wallet-card{max-width:400px;width:100%;margin:8px auto}
+.empty-state .first-card-copy h2{font-family:Jakarta,Inter,sans-serif}
+
+.has-member .card{animation:wallet-card-arrive 180ms cubic-bezier(.16,1,.3,1)}
+@keyframes wallet-card-arrive{from{opacity:.6;transform:translateY(5px)}to{opacity:1;transform:translateY(0)}}
+@media(prefers-reduced-motion:reduce){.has-member .card{animation:none}}

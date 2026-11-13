@@ -16,6 +16,8 @@ try {
   await page.goto(`${base}/?member=${id}`);
   await page.locator('#card-progress').waitFor();
   assert.equal(await page.locator('#card-progress').textContent(), '2 / 8 stamps');
+  await page.getByRole('button',{name:'Member code',exact:true}).click();assert.equal(await page.locator('.member-code').isVisible(),true);assert.equal(await page.locator('.qr').isVisible(),false);
+  await page.getByRole('button',{name:'Show QR',exact:true}).click();assert.equal(await page.locator('.qr').isVisible(),true);
   assert.equal(await page.getByText('Add to Google Wallet').count(), 0);
   await page.evaluate(() => navigator.serviceWorker.ready);
   const manifest = await (await context.request.get(`${base}/manifest.webmanifest`)).json();

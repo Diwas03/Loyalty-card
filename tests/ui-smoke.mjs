@@ -35,6 +35,13 @@ try {
   const openSections = async () => {
     if (!(await page.locator('#section-navigation').evaluate(element => element.open))) await page.locator('#section-toggle').click();
   };
+  await page.setViewportSize({width:1440,height:1000});await page.goto(base+'/');
+  await page.locator('#empty-paste-card').waitFor();await page.screenshot({path:'/tmp/loyalty-ui/wallet-empty-desktop.png',fullPage:true});
+  await page.setViewportSize({width:390,height:844});await page.locator('#empty-paste-card').click();
+  assert.equal(await page.locator('#paste-method').isVisible(),true);assert.equal(await page.locator('#scan-method').isVisible(),false);
+  await page.screenshot({path:'/tmp/loyalty-ui/add-card-mobile.png',fullPage:true});await page.keyboard.press('Escape');
+  await page.locator('#empty-scan-card').click();await page.locator('#add-card-message').filter({hasText:'Camera unavailable'}).waitFor();
+  assert.equal(await page.locator('#paste-method').isVisible(),true);await page.locator('#close-add-card').click();
   for (const width of [375, 768, 1440]) {
     await page.setViewportSize({ width, height: 1000 });
     for (const [name, path] of Object.entries({ business: '/business/', home: '/', card: `/?member=${id}`, join: '/join.html?shop=default', login: '/business/login.html', register: '/business/register.html', staff: '/business/dashboard.html#customers', poster: '/shop.html?shop=default' })) {
@@ -69,16 +76,18 @@ try {
   await page.goto(base + '/business/login.html');
   await page.locator('#username').fill('alex.owner');
   await page.locator('#password').fill('test-password-only');
+  await page.locator('#show-password').check();assert.equal(await page.locator('#password').getAttribute('type'),'text');
+  await page.locator('#show-password').uncheck();assert.equal(await page.locator('#password').getAttribute('type'),'password');
   await page.locator('#login button').click();
   await page.getByText('Incorrect username or password.').waitFor();
   assert.equal(await page.locator('#message').getAttribute('data-tone'), 'error');
   assert.equal(await page.locator('#login button').isEnabled(), true);
   await page.evaluate(() => sessionStorage.setItem("loyalty-staff-handoff", JSON.stringify({ token: "a".repeat(64), createdAt: Date.now() })));
   await page.goto(base + '/business/dashboard.html#customers');
-  await page.locator('#customers .customer-row').first().click();
-  await page.waitForFunction(() => document.querySelector('#customer-name').textContent === 'Alex Morgan');
+  await page.locator('#customers .reward-confirm').first().waitFor();
+  assert.equal(await page.locator('#panel-customers #history,#panel-customers #delivery,#panel-customers #customer-secondary-actions').count(),0);
   assert.equal(await page.locator('#purchase').count(), 0);
-  assert.equal(await page.locator('#redeem').isEnabled(), true);
+  assert.equal(await page.locator('.reward-confirm').first().isEnabled(), true);
   assert.equal(await page.locator('details.delivery-panel').getAttribute('open'), null);
   assert.deepEqual(errors, []);
   console.log('UI smoke passed: customer/business pages and all six dashboard tabs at 375/768/1440px, no overflow or JS errors, login recovery and customer selection.');

@@ -93,6 +93,10 @@ test("staff cannot retrieve private card links; customer transfers expire and co
     await request(app).post("/api/recover").send({token:outstanding}).expect(200);
     await owner.post("/api/staff/region").send({currency:"BTN",country:"BT",timezone:"Asia/Thimphu"}).expect(200);
     await owner.post("/api/staff/region").send({currency:"BTN",country:"BT",timezone:"Invalid/zone"}).expect(400);
+    const privateToken=randomUUID();
+    await db.query('UPDATE coffee.members SET card_token=$1 WHERE id=$2',[privateToken,m.id]);
+    const card=(await request(app).get('/api/members/'+privateToken).expect(200)).body;
+    assert.equal(card.id,privateToken);assert.equal(card.membershipCode,m.id);assert.notEqual(card.membershipCode,card.id);
   } finally { await db.end(); }
 });
 
