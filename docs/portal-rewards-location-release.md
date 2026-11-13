@@ -25,3 +25,18 @@ All nine release checks passed locally with synthetic data and disposable loopba
 New API assertions cover queue authentication, shop isolation (including no expiration of another shop's vouchers), voucher expiry, pagination without duplicates, explicit confirmation, replay-safe redemption, removal after redemption, owner-only address publication, invalid/script/spoofed Maps URLs, short Google Maps links, address-only settings and clearing. Owner and cashier details no longer contain private link fields.
 
 Browser assertions cover absent cross-navigation, absent customer finder/private-link buttons, actual queue selection, cancel/confirm redemption, refreshed eligibility, owner location publication and its appearance on the real customer card, moved workspace switching, phone/tablet/desktop overflow checks, 200% zoom, reduced motion, forced colours and session/logout handling. Screenshots were generated and reviewed; artifacts/logs remain ignored under `data/` and `/tmp/loyalty-ui/`. No real production customer was used for validation. A physical phone camera and Google Maps place selection are operator acceptance checks; automated scanner tests simulate decode callbacks.
+
+## Verified production deployment
+
+- Live customer wallet: https://loyalty-card-pi.vercel.app/
+- Owner/employee sign-in: https://loyalty-card-pi.vercel.app/business/login.html
+- Production source: `87d58fd7b19890122b9c30fd64b40de01a6a3003` on `release/instant-scan-stamps`.
+- Vercel deployment `dpl_H4MeUXBaTev15xgsfkggZMkseuhF` confirmed READY with the stable app alias.
+- `/healthz?release=87d58fd` returned HTTP 200 with `status=ok`, `schema=coffee`, confirming transactional initialization completed. Public shop data exposes the new address/map fields without populating a fictional address.
+- Eight live pages/assets (wallet, join, business landing/login/dashboard, staff script, card renderer and stylesheet) returned HTTP 200 and matched release source by SHA-256.
+- Unauthenticated Rewards and staff shop requests returned HTTP 401. No real customer's card or reward was changed for live verification.
+- The feature implementation is committed separately at `c5cd0a5`; all nine feature checks passed with 47 unit/integration and 16 hosted tests. Its backup guard was updated for the two new empty shop fields; operator SQL revocation tests remain intact without reintroducing staff link viewing.
+- Remote main remained `997298a50072c150a2c9a0c0f42c06d570615122`. Both development branches were pushed; main was not merged or pushed.
+- Remaining generated local fixture databases at cleanup: zero. Temporary PostgreSQL was stopped; browser/server checks closed their processes.
+
+Owners should reload the dashboard, publish their real address under Programs & cards → Shop location, and use Print shop QR to display/print their shop-specific signup QR. Customers scan that QR and register themselves. The location form supports external Google Maps place selection and pasted Share links; it does not embed the paid Maps picker. Reload installed web apps to pick up the refreshed interface.
