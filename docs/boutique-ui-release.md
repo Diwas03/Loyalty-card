@@ -33,3 +33,18 @@ No SQL migration, customer balance reset, production seed, credential change, bi
 All nine checks passed on the release tree: typecheck, build, 32 unit/integration tests, 16 hosted tests, browser, scanner, upgrade browser, UI and PWA. The broader readiness branch separately passed all nine checks with 47 unit/integration and 16 hosted tests. UI and PWA checks were repeated after the final font, empty-wallet, password visibility and QR/code refinements. The final member-code response assertion and production build were also checked.
 
 The backward-compatible `membershipCode` response field contains the same stable membership ID encoded in the staff-scanned QR, rather than the private card URL token. A test explicitly separates the private token and membership ID to verify this. No existing response field or customer link is removed.
+
+## Verified production rollout
+
+- Customer wallet: https://loyalty-card-pi.vercel.app/
+- Owner/employee sign-in: https://loyalty-card-pi.vercel.app/business/login.html
+- Deployed source: `6106b1fd974e496e7a18537ad51db9dc6effbbd8` on `release/instant-scan-stamps`.
+- Vercel deployment `dpl_H5AtNEAjnRiVqYhRXwrbtFgpiDo5` was READY, production target, with the stable app alias.
+- Production `/healthz?release=6106b1f` returned HTTP 200, `status=ok`, `schema=coffee`.
+- Twelve live pages/assets, including customer wallet, business login/register/dashboard, scripts, design-system CSS and all three WOFF2 fonts, returned HTTP 200 and matched the source files by SHA-256.
+- Unauthenticated `/api/staff/rewards` still returned HTTP 401. No production customer was created or redeemed for verification.
+- The same product changes are on the readiness feature branch at `a3512f3`. Its final unit run passed 47/47; the release unit run passed 32/32. The membership-code/private-token assertion passed.
+- Main remained `997298a50072c150a2c9a0c0f42c06d570615122`; neither branch was merged into main.
+- A leftover synthetic fixture from an earlier interrupted browser test was removed from the task-owned loopback cluster. Remaining generated fixtures: zero. Temporary PostgreSQL was stopped.
+
+Reload the installed web app/dashboard to pick up the new interface. Camera permission, real-phone camera performance and native PWA install gestures remain device-level acceptance checks. Browser coverage uses synthetic local records and controlled QR decode callbacks, with actual camera-denial recovery also checked.
