@@ -19,7 +19,8 @@ test("revocation closes browser recovery and stale transfer creation; transfer c
   const own=await owner(app,'link-owner');const browser=request.agent(app);await browser.get('/api/customer-session').expect(200);
   const card=(await browser.post('/api/join').send({name:'Private customer',accept:true}).expect(200)).body.member;
   const transfer=(await browser.post('/api/members/'+card.id+'/transfer').send({}).expect(200)).body.transferUrl.split('#')[1];
-  const rotated=(await own.client.post('/api/staff/members/'+card.id+'/rotate-link').send({confirm:true}).expect(200)).body.customerUrl;
+  await own.client.post('/api/staff/members/'+card.id+'/rotate-link').send({confirm:true}).expect(410);
+  const rotated='/?member='+(await db.query('SELECT coffee.rotate_private_link($1,$2,$3) AS token',[card.id,own.shop,'operator-test'])).rows[0].token;
   await request(app).get('/api/members/'+card.id).expect(404);
   assert.equal((await browser.get('/api/customer-session').expect(200)).body.member,null);
   await request(app).post('/api/recover').send({token:transfer}).expect(410);

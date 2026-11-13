@@ -33,6 +33,16 @@
     const rewards = element("p", `${member.rewards} × ${member.rewardLabel || "Free coffee"} available`, "member-rewards");
     if (!compact && !preview) { name.id = "card-name"; name.tabIndex = -1; progress.id = "card-progress"; rewards.id = "card-rewards"; }
     container.append(name, progress, rewards);
+    if (member.shopAddress) container.append(element("p",member.shopAddress,"member-location"));
+    if (!compact && member.shopMapsUrl) {
+      try {
+        const url=new URL(member.shopMapsUrl);
+        if(url.protocol==="https:" && !url.username && !url.password && !url.port &&
+          ((["google.com","www.google.com"].includes(url.hostname) && /^\/maps(?:\/|$)/.test(url.pathname)) || ["maps.google.com","maps.app.goo.gl"].includes(url.hostname) || (url.hostname==="goo.gl" && url.pathname.startsWith("/maps/")))) {
+          const link=element("a","Open in Google Maps ↗","card-map-link");link.href=url.href;link.target="_blank";link.rel="noopener noreferrer";container.append(link);
+        }
+      } catch {}
+    }
     if (!compact) {
       const stamps = element("div", undefined, "stamp-grid");
       if (!compact && !preview) stamps.id = "card-stamps";

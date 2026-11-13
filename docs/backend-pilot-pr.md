@@ -38,3 +38,7 @@ No PR is merged or production release authorized by this draft.
 ## Publication result
 
 The branch was pushed with its exact Vercel preview exclusion enabled. A read-only post-push check found no feature-branch Vercel deployments and an unchanged production deployment. The branch-rule regression, typecheck and build pass. Automatic draft PR creation was attempted, but GitHub GraphQL returned `Forbidden`; no draft PR was created by that attempt. Use the GitHub PR creation form and choose **Create draft pull request**, or restore authorized API access. Do not merge or deploy.
+
+## Latest customer and staff experience
+
+Customer wallet and business navigation are separated; staff private-card viewing/rotation endpoints are removed. The Rewards tab lists eligible customers and supports confirmed, retry-safe redemption. Owners publish a public address/Google Maps link on customer cards, and operational workspace selection moves into the scanner. The responsive visual refresh and validation details are in `docs/portal-rewards-location-release.md`. The exact product release is deployed separately from the wider readiness work.

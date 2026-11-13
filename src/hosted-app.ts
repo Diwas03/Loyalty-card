@@ -1,6 +1,6 @@
 import { externalDeliveryAllowed } from "./environment-safety.js";
 import { randomUUID } from "node:crypto";
-import { cardDesign, validLogo } from "./card-design.js";
+import { cardDesign, validLogo, validShopMapsUrl } from "./card-design.js";
 import { staffToken } from "./staff-session.js";
 import { teamRoutes } from "./team-routes.js";
 import { rememberWorkspace, forgetWorkspace, workspaceToken } from "./session-recovery.js";
@@ -293,7 +293,7 @@ export function createHostedApp(
   const shopId = (value: unknown) => typeof value === "string" && value ? value : "default";
   const shopToken = (token: string, shop: string) => digest(shop === "default" ? token : token + ":" + shop);
   async function shopInfo(id: string) {
-    return (await db.query("SELECT id,name,color,stamp_goal,card_title,tagline,reward_label,stamp_icon,card_style,logo_data,currency,timezone,country,reward_expiry_days FROM coffee.shops WHERE id=$1", [id])).rows[0];
+    return (await db.query("SELECT id,name,color,stamp_goal,card_title,tagline,reward_label,stamp_icon,card_style,logo_data,shop_address,shop_maps_url,currency,timezone,country,reward_expiry_days FROM coffee.shops WHERE id=$1", [id])).rows[0];
   }
   async function shopMember(id: string, shop: string) {
     // Authorize before readMember, which legitimately expires vouchers.
@@ -326,12 +326,8 @@ export function createHostedApp(
       res.status(conflict ? 409 : 410).json({error: conflict ? "This browser already has another card for this shop. Use a separate browser; your transfer link has not been consumed." : "This transfer link expired or was already used. Create a new link from your original card."});
     }
   });
-  app.post("/api/staff/members/:id/rotate-link", staff, async (req, res) => {
-    if (res.locals.role !== "owner") { res.status(403).json({ error: "Owner access required" }); return; }
-    if (req.body.confirm !== true) { res.status(400).json({ error: "Confirm invalidating the previous private link" }); return; }
-    const token = (await db.query("SELECT coffee.rotate_private_link($1,$2,$3) AS token", [String(req.params.id),res.locals.shopId,res.locals.actor])).rows[0]?.token;
-    if (!token) { res.status(404).json({ error: "Membership not found" }); return; }
-    res.json({ customerUrl: "/?member=" + token });
+  app.post("/api/staff/members/:id/rotate-link", staff, (_req, res) => {
+    res.status(410).json({ error: "Private customer card links are no longer available through staff accounts." });
   });
   app.get("/api/shop", async (req, res) => {
     const shop = await shopInfo(shopId(req.query.shop));
@@ -392,6 +388,15 @@ export function createHostedApp(
     const rows = (await db.query("SELECT id,name,stamps,rewards FROM coffee.members WHERE shop_id=$1 ORDER BY id", [res.locals.shopId])).rows;
     const cell = (value: unknown) => '"' + String(value).replace(/^(?=[\s]*[=+@\-]|[\t\r\n])/, "'").replaceAll('"', '""') + '"';
     res.type("text/csv").attachment("customers.csv").send(["id,name,stamps,rewards", ...rows.map(row => [row.id,row.name,row.stamps,row.rewards].map(cell).join(","))].join("\r\n"));
+  });
+  app.post("/api/staff/shop-location", staff, async (req, res) => {
+    if (res.locals.role !== "owner") { res.status(403).json({ error: "Owner access required" }); return; }
+    const { address, mapsUrl } = req.body;
+    if (typeof address!=="string" || address.trim().length>240 || typeof mapsUrl!=="string" || mapsUrl.trim().length>1500 || !validShopMapsUrl(mapsUrl.trim())) {
+      res.status(400).json({ error: "Enter an address up to 240 characters and an optional HTTPS Google Maps place/share link." }); return;
+    }
+    await db.query("UPDATE coffee.shops SET shop_address=$1,shop_maps_url=$2 WHERE id=$3",[address.trim(),mapsUrl.trim(),res.locals.shopId]);
+    res.json({shopAddress:address.trim(),shopMapsUrl:mapsUrl.trim()});
   });
   app.post("/api/staff/shop", staff, async (req, res) => {
     if (res.locals.role !== "owner") { res.status(403).json({ error: "Owner access required" }); return; }
@@ -539,6 +544,13 @@ export function createHostedApp(
         await QRCode.toBuffer(m.id, { width: 320, margin: 3 }),
       );
   });
+  app.get("/api/staff/rewards", staff, async (req, res) => {
+    const after = typeof req.query.after === "string" ? req.query.after : "";
+    if (after && !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(after)) { res.status(400).json({ error: "Invalid reward list cursor" }); return; }
+    await db.query("SELECT coffee.expire_member_rewards(id) FROM coffee.members WHERE shop_id=$1 AND rewards>0", [res.locals.shopId]);
+    const rows = (await db.query('SELECT m.id,m.name,m.stamps,m.rewards,p.stamp_goal AS "stampGoal" FROM coffee.members m JOIN coffee.shops p ON p.id=m.shop_id WHERE m.shop_id=$1 AND m.rewards>0 AND m.id>$2 ORDER BY m.id LIMIT 51', [res.locals.shopId, after])).rows;
+    res.json({ customers: rows.slice(0,50), nextCursor: rows.length>50 ? rows[49].id : null });
+  });
   app.get("/api/staff/members", staff, async (req, res) => {
     const q = String(req.query.q || "").slice(0, 80);
     res.json(
@@ -573,7 +585,6 @@ export function createHostedApp(
     res.json({
       ...publicMember(m),
       id: m.id,
-      privateCardToken: res.locals.role === "owner" ? m.card_token : undefined,
       history: history.rows,
       deliveries: deliveries.rows,
     });

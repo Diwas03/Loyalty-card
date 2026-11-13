@@ -38,7 +38,7 @@ export async function restorePilot(db:Pool,snapshot:PilotBackup) {
       card_title:"Member card",tagline:"A little more rewarding.",reward_label:"Free coffee",
       stamp_icon:"check",card_style:"classic",logo_data:"",referrals_enabled:true,
       referral_reward_kind:"stamps",referral_reward_amount:1,currency:"BTN",timezone:"Asia/Thimphu",
-      country:"BT",reward_expiry_days:null}],
+      country:"BT",reward_expiry_days:null,shop_address:"",shop_maps_url:""}],
     locations:[{id:"default:main",shop_id:"default",name:"Main location",active:true}],
     pilot_readiness_versions:[{version:"20261102"}],
   };

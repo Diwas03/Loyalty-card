@@ -66,3 +66,7 @@ ALTER TABLE coffee.shops ADD COLUMN IF NOT EXISTS reward_label text NOT NULL DEF
 ALTER TABLE coffee.shops ADD COLUMN IF NOT EXISTS stamp_icon text NOT NULL DEFAULT 'check' CHECK(stamp_icon IN ('check','coffee','star','heart'));
 ALTER TABLE coffee.shops ADD COLUMN IF NOT EXISTS card_style text NOT NULL DEFAULT 'classic' CHECK(card_style IN ('classic','minimal'));
 ALTER TABLE coffee.shops ADD COLUMN IF NOT EXISTS logo_data text NOT NULL DEFAULT '' CHECK(length(logo_data)<=180000);
+
+-- Public customer-facing shop location; separate from staff operating-location grants.
+ALTER TABLE coffee.shops ADD COLUMN IF NOT EXISTS shop_address text NOT NULL DEFAULT '' CHECK(length(shop_address)<=240);
+ALTER TABLE coffee.shops ADD COLUMN IF NOT EXISTS shop_maps_url text NOT NULL DEFAULT '' CHECK(length(shop_maps_url)<=1500);
