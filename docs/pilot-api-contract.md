@@ -1,0 +1,32 @@
+# Pilot API contract changes and decisions
+
+All mutation requests still require same-origin JSON. Staff APIs require a bearer token, plus enabled account/business membership and active assigned context. Recovery cookies only restore a bearer session at their narrow endpoint; they never authenticate staff mutations directly. Existing short-lived refresh behavior is preserved (not an indefinitely renewable session). DELETE session now revokes the corresponding server token; logout clears its cookie too.
+
+- `/api/staff/members/:id/scan` requires staff authorization and an Idempotency-Key. A valid camera scan immediately awards one stamp without confirmation. Each new scanner session creates a new key and can immediately award another stamp. Duplicate frames and retries retain the same key. Manual lookup never awards stamps. Redemption/corrections still require confirmation. This supersedes the earlier confirmation policy at the merchant’s request.
+- Adjustment keeps its existing request/response shape. The new DB wrapper enforces location permission and writes the audit location atomically with the bounded progress correction. Same key/reason/delta retries return the original result.
+- Cashier/manager member-detail responses omit `privateCardToken`. Authenticated membership ID, progress and history remain available for shared shop programmes. Owners retain private-link and rotation controls. Staff UI hides the private-card link when that capability is absent (legacy local mode remains compatible).
+- Rotation invalidates the old private URL, outstanding transfers **and** customer browser enrollment mappings. An old cookie no longer recovers the replacement link. The owner's response is the replacement URL; deliver it through an appropriate private channel after verifying the customer.
+- Transfers remain 10-minute, single-use fragment links. Consumption/enrollment/expiry checks now commit atomically. A destination browser already holding a different membership at that shop receives 409, and the token is **not consumed**. Use a separate browser for that conflicting membership. This preserves existing membership identity rather than silently merging people.
+- Unauthorized cross-shop reads no longer run voucher-expiry mutations before authorization. Customer card reads still settle legitimately expired vouchers. Reports, overview and CSV reconcile expiry before reporting current balances.
+- CSV still uses shop-scoped owner-only export, quoted cells and a download response. Leading whitespace/formula/newline prefixes are neutralized to reduce spreadsheet formula execution. Exported IDs are membership identifiers, not replacement private-link tokens.
+- `PILOT_ONBOARDING_MODE` defaults to existing `open` behavior. `invite` requires body `inviteToken` (64 hex), backed by an unexpired one-use hashed DB invitation. Successful registration and consumption share one transaction. Existing merchants' login/enrollment are unaffected. Unknown mode fails closed. `/business/register.html#invite=TOKEN` supports the optional flow, strips the fragment, and sends the token only in the JSON body. Local operator `pilot:invite` writes a 48-hour invite to an ignored 0600 file without logging it. Real staging provisioning remains an authorized operator task.
+- Unexpected server errors carry a random correlation ID in the response/header and log no error body, SQL, credential, private URL or customer document contents. Do not depend on raw PostgreSQL messages as a client contract.
+
+## Preserved policy and launch decisions
+
+One stamp programme is shared across a shop's locations. Location grants control where staff can operate; customers are shop members rather than location-exclusive members. Existing manager permission to see shop-wide aggregate reports is preserved, as are owner-only CSV/team/design controls. Merchant owners must approve that reporting scope before launch; per-location analytics require a separately reviewed policy/UI change, not an inferred restriction here.
+
+An existing correction adjusts only unconverted progress, requires a reason and authorized actor, is bounded by 100 stamps and `[0, target-1]`, and never changes promised vouchers. It is **not** a refund or reversal. If an incorrect purchase already issued or redeemed a reward or qualified a referral, stop and have the merchant decide resolution; do not silently retract it. Existing individual vouchers retain recorded label/expiry; historical aggregate-only rewards were grandfathered without invented expiry by the upstream migration. Verify any external historical promise with the merchant.
+
+Referrals remain enabled only with the fully tested first-confirmed-paid-visit implementation. No new campaign/refund/spend/VIP/POS/native Wallet functionality is activated. Existing spend/refund helpers in main are not wired into pilot endpoints and were not expanded.
+
+
+## Follow-up operational hardening
+
+Preview fingerprints compare the canonical PostgreSQL destination rather than raw URI spelling (DNS case/trailing dot/IDNA, URI-encoded user/database, and default database naming). Identity helper errors do not include credentials. Preview connections always carry an explicit port. Staging still requires independent operator verification and remains disabled for this branch.
+
+Local restoration now admits only an untouched migrated target, locks it during the check and replay, verifies the backup marker, and refuses cross-schema dependencies without cascading. Existing configurations and invitations cannot be silently overwritten. These safeguards change only isolated operator tooling; customer/merchant policy and application API contracts are unchanged.
+
+## Customer/business separation update
+
+Staff APIs no longer return private customer card tokens; `/api/staff/members/:id/rotate-link` is retired with authenticated HTTP 410. Customer transfer tools remain customer functions. The emergency SQL rotation utility is retained for operator maintenance and its database-level revocation tests. `/api/staff/rewards` returns only the active shop’s eligible customers with cursor pagination; redemption still requires confirmation and an idempotency key. `/api/staff/shop-location` accepts owner-only public address/Google Maps settings. Apply the updated `shops.sql` before this feature branch’s read-only startup. See [the current product release notes](portal-rewards-location-release.md).

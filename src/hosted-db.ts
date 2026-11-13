@@ -1,3 +1,4 @@
+import { runtimeEnvironment, externalDeliveryAllowed } from "./environment-safety.js";
 import { cardDesign } from "./card-design.js";
 import pg from "pg";
 import { databaseOptions } from "./database-config.js";
@@ -8,14 +9,14 @@ pg.types.setTypeParser(20, Number);
 export const digest = (s: string) =>
   createHash("sha256").update(s).digest("hex");
 export function hostedPool() {
-  return new pg.Pool(databaseOptions());
+  return new pg.Pool(databaseOptions(runtimeEnvironment()));
 }
 export type HostedDB = Pick<pg.Pool, "query">;
 export async function readMember(db: HostedDB, id: string) {
   await db.query("SELECT coffee.expire_member_rewards($1)", [id]);
   return (
     await db.query(
-      "SELECT m.*,p.stamp_goal,p.name AS shop_name,p.color AS shop_color,p.card_title,p.tagline,p.reward_label,p.stamp_icon,p.card_style,p.logo_data,p.referrals_enabled,p.referral_reward_kind,p.referral_reward_amount,(SELECT count(*)::int FROM coffee.referrals r WHERE r.referrer_id=m.id) AS referred_count,(SELECT count(*)::int FROM coffee.referrals r WHERE r.referrer_id=m.id AND r.credited_at IS NOT NULL) AS credited_count FROM coffee.members m JOIN coffee.shops p ON p.id=m.shop_id WHERE m.id=$1",
+      "SELECT m.*,p.stamp_goal,p.name AS shop_name,p.color AS shop_color,p.card_title,p.shop_address,p.shop_maps_url,p.tagline,p.reward_label,p.stamp_icon,p.card_style,p.logo_data,p.referrals_enabled,p.referral_reward_kind,p.referral_reward_amount,(SELECT count(*)::int FROM coffee.referrals r WHERE r.referrer_id=m.id) AS referred_count,(SELECT count(*)::int FROM coffee.referrals r WHERE r.referrer_id=m.id AND r.credited_at IS NOT NULL) AS credited_count FROM coffee.members m JOIN coffee.shops p ON p.id=m.shop_id WHERE m.id=$1",
       [id],
     )
   ).rows[0];
@@ -37,6 +38,7 @@ export const publicMember = (m: any) => ({
     credited: m.credited_count || 0,
   },
   id: m.card_token || m.id,
+  membershipCode: m.id,
   name: m.name,
   stamps: m.stamps,
   rewards: m.rewards,
@@ -55,7 +57,7 @@ export async function deliverHosted(
     .rows[0].job;
   if (!j) return false;
   try {
-    if (!readiness().google.enabled) {
+    if ((!externalDeliveryAllowed() && deliver === updateGoogle) || !readiness().google.enabled) {
       await db.query(
         "UPDATE coffee.jobs SET status='blocked',error='Google credentials missing',next_at=$1 WHERE id=$2",
         [Date.now() + 60000, j.id],

@@ -1,3 +1,4 @@
+import { requireLocalOperator } from "../src/environment-safety.js";
 import "dotenv/config";
 import { DatabaseSync } from "node:sqlite";
 import { existsSync } from "node:fs";
@@ -5,6 +6,7 @@ import { hostedPool } from "../src/hosted-db.js";
 const source = process.env.DB_PATH || "data/coffee.sqlite";
 if (!existsSync(source)) throw Error("Local database not found");
 const local = new DatabaseSync(source, { readOnly: true });
+requireLocalOperator("import-sqlite.ts");
 const db = hostedPool();
 const c = await db.connect();
 try {

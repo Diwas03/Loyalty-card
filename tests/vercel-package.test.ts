@@ -22,7 +22,7 @@ test("Vercel's explicit SQL package initializes every hosted schema and preserve
     }
     process.chdir(directory);
     await initializeHosted(db);
-    for (const table of ["ledger", "issued_rewards", "business_memberships", "locations"]) {
+    for (const table of ["ledger", "issued_rewards", "business_memberships", "locations", "pilot_readiness_versions", "merchant_invites"]) {
       assert.ok((await db.query("SELECT to_regclass($1) AS name", ["coffee." + table])).rows[0].name);
     }
     const member = (await db.query("SELECT coffee.enroll_customer('Preserved fixture',NULL,'default') AS member")).rows[0].member;

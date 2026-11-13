@@ -4,18 +4,18 @@
     <meta charset="utf-8" />
     <meta name="theme-color" content="#193d32" />
     <link rel="apple-touch-icon" href="/icons/icon-192.png" />
-    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
     <title>Staff sign in</title>
     <link rel="icon" type="image/svg+xml" href="/brand.svg" />
-    <link rel="stylesheet" href="/style.css" />
+    <link rel="stylesheet" href="/style.css" /><link rel="stylesheet" href="/design-system.css" />
     <script src="/login.js" defer></script>
-  </head>
+  <script src="/auth-ui.js" defer></script></head>
   <body class="login-page">
-    <a class="auth-brand" href="/business/">Loyalty Business<span>.</span></a>
+    <div class="auth-shell"><div class="auth-form-column"><a class="auth-brand" href="/business/">Loyalty Business<span>.</span></a>
     <main id="main-content">
     <header class="auth-header"><h1>Sign in</h1><p>Open your business workspace.</p></header>
     <section class="auth-panel">
-      <p class="muted">Your workspace survives refresh for up to 30 minutes. Sign out on shared devices; inactive workspaces close after 15 minutes.</p>
+
       <form id="login">
         <label
           >Username
@@ -32,13 +32,13 @@
             type="password"
             autocomplete="current-password"
             required /></label
-        ><button>Sign in <span aria-hidden="true">→</span></button>
+        ><label class="password-visibility"><input type="checkbox" id="show-password"> Show password</label><button type="submit">Sign in <span aria-hidden="true">→</span></button>
       </form>
-      <p id="message" role="status"></p>
+      <p id="message" role="status" aria-live="polite"></p><p class="session-notice">30-minute session · Locks after 15 minutes of inactivity. Sign out on shared devices.</p>
     </section>
     <p><a href="/business/register.html">Create an account for your shop</a></p>
-    <a class="back-link" href="/">← Customer wallet</a>
     </main>
     <footer class="auth-footer">Loyalty for the places that matter.</footer>
+    </div><aside class="auth-showcase" aria-labelledby="showcase-title"><div class="showcase-inner"><span class="showcase-kicker">THE EVERYDAY, REWARDED</span><h2 id="showcase-title">A familiar face.<br>A reason to return.</h2><p>A simple loyalty experience for the places people love coming back to.</p><div class="showcase-card"><div class="showcase-card-head"><strong>The neighbourhood café</strong><span>MEMBER CARD</span></div><span class="showcase-member">Alex’s card</span><strong class="showcase-count">5 <small>/ 8 stamps</small></strong><div class="showcase-stamps" aria-hidden="true"><span>✓</span><span>✓</span><span>✓</span><span>✓</span><span>✓</span><i></i><i></i><i></i></div><span class="showcase-perk">A coffee on the house. A little closer with every visit.</span></div><div class="showcase-benefits"><div><strong>Scan.</strong><span>One scan. One stamp.</span></div><div><strong>Reward.</strong><span>A thank-you worth returning for.</span></div></div><small class="showcase-disclaimer">Illustrative card and reward rule · no real customer data</small></div></aside></div>
   </body>
 </html>

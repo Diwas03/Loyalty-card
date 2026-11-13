@@ -7,3 +7,9 @@ dist/
 
 .vercel/
 public/vendor/
+
+.env.*
+!.env.example
+backups/
+exports/
+artifacts/

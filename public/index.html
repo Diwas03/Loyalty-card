@@ -5,10 +5,10 @@
     <meta name="theme-color" content="#193d32">
     <link rel="apple-touch-icon" href="/icons/icon-192.png">
     <script src="/pwa.js" defer=""></script>
-    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
     <title>Your cards · Loyalty</title>
     <link rel="icon" type="image/svg+xml" href="/brand.svg">
-    <link rel="stylesheet" href="/style.css">
+    <link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/design-system.css">
     <script src="/vendor/zxing/zxing-browser.min.js" defer=""></script>
     <script src="/card-ui.js" defer=""></script>
     <script src="/customer.js" defer=""></script>
@@ -16,26 +16,26 @@
   <body class="customer-page cards-page">
     <a class="skip-link" href="#main-content">Skip to content</a>
     <nav aria-label="Main navigation">
-      <a href="/">Loyalty</a><a href="/" class="nav-active" aria-current="page">My cards</a>
+      <a href="/" aria-label="Loyalty wallet">Loyalty<span class="wordmark-dot">.</span></a><span id="wallet-connection" class="wallet-connection">Web wallet</span><button id="add-card">+ Add Card</button>
     </nav>
     <main id="main-content">
     <a href="/" id="wallet-back" hidden="">← Back to my cards</a><header class="customer-intro">
 
-      <h1>My cards</h1>
+      <p class="workspace-eyebrow">Your everyday rewards</p><h1>My cards</h1><p class="wallet-intro-copy">Your favourite places, together in one wallet. Collect stamps, see your rewards, and keep every shop’s card close.</p>
 
     </header>
-    <div id="wallet-toolbar" class="wallet-toolbar"><div><h2>Your wallet</h2><p class="muted">Every membership stays separate.</p></div><button id="add-card">+ Add a shop or card</button></div>
+    <div id="wallet-toolbar" class="wallet-toolbar"><div><h2>Your wallet</h2><p class="muted">Every membership stays separate.</p></div></div>
 
     <div class="card-layout">
     <div class="card-column">
     <div id="message" role="status" aria-live="polite"></div>
     <div id="card" class="card-library">
-      <div class="empty-state"><h2>No cards yet</h2><p>Add a shop’s signup link or restore a card using its private link.</p><small>Your balances stay with the shop. This wallet stores shortcuts on this device.</small></div>
+      <div class="empty-state wallet-first-card"><div class="sample-wallet-card" aria-label="Illustrative card showing three of eight stamps"><span>SAMPLE MEMBERSHIP</span><strong>Your next little<br>thank-you.</strong><div class="sample-stamps" aria-hidden="true"><b>✓</b><b>✓</b><b>✓</b><i></i><i></i><i></i><i></i><i></i></div><small>3 of 8 stamps · illustration only</small></div><div class="first-card-copy"><span class="workspace-eyebrow">A LITTLE LOYALTY GOES A LONG WAY</span><h2>Your favourite places.<br>One lovely wallet.</h2><p>Scan your shop’s QR to register yourself, or add a private card link you already have.</p><div class="actions"><button id="empty-scan-card">Scan a shop QR</button><button id="empty-paste-card" class="secondary">Paste a link</button></div><small>No owner account needed. Your memberships stay separate.</small></div></div>
     </div>
     </div>
 
 
-    <aside id="member-details" hidden=""><div id="reward-history"></div><section id="membership-rule"><h2>How this card works</h2><p id="terms">Keep cards from your favourite shops together.</p></section><details id="card-tools" hidden=""><summary>Private card tools</summary><p>These links grant access to your card. Keep them private.</p><div id="member-tools" class="member-tools" hidden=""><button id="share-card" class="secondary">Save private link ↗</button></div></details><details id="installation-help" class="installation-help"><summary>Add to your home screen</summary><section id="save" class="save-section" hidden="">
+    <aside id="member-details" hidden=""><div id="reward-history"></div><details id="membership-rule"><summary>How this card works</summary><p id="terms">Keep cards from your favourite shops together.</p></details><details id="card-tools" hidden=""><summary>Private card tools</summary><p>These links grant access to your card. Keep them private.</p><div id="member-tools" class="member-tools" hidden=""><button id="copy-private-card" class="secondary">Copy private link</button><button id="share-card" class="secondary">Share private link</button></div></details><details id="installation-help" class="installation-help"><summary>Add to your home screen</summary><section id="save" class="save-section" hidden="">
 
 
       <h2>Keep your wallet handy</h2>
@@ -43,10 +43,10 @@
       <p id="install-help">On Android, open the browser menu and choose Install app or Add to Home screen. On iPhone, open in Safari, tap Share, then Add to Home Screen.</p>
       <small>Keep your private card link. Your saved cards are available on this device; clearing browser data removes these shortcuts. Internet is required to load your card and current balance.</small>
     </section></details></aside></div>
-    <section id="referral-section" class="referral-section" hidden=""><div><p class="eyebrow">GOOD THINGS ARE BETTER SHARED</p><h2>Bring a friend. Earn a little extra.</h2><p id="referral-offer"></p><small id="referral-progress"></small></div><div id="referral-sharing"><label for="referral-link">Your public invitation link</label><input id="referral-link" type="url" readonly=""><div class="actions"><button id="share-referral">Invite a friend ↗</button><button id="copy-referral" class="secondary">Copy link</button></div><small>Share this invitation, not your private membership link. Your friend creates their own card.</small></div><p id="referral-message" role="status" aria-live="polite"></p></section>
-    <dialog id="add-card-dialog" aria-labelledby="add-card-title"><div class="dialog-heading"><h2 id="add-card-title" tabindex="-1">Add to your wallet</h2><button id="close-add-card" class="secondary" aria-label="Close add card" type="button">✕</button></div><p>Join another shop or restore an existing card. Your other cards stay in your wallet.</p><button id="scan-shop" class="secondary">Scan a shop QR</button><video id="join-camera" muted="" playsinline="" hidden=""></video><form id="add-card-form"><label for="card-url">Shop signup link or private card link</label><input id="card-url" type="text" inputmode="url" required="" placeholder="Paste your shop or card link"><button>Continue →</button></form><p id="add-card-message" role="status" aria-live="polite"></p><small>Cards are saved on this device. Keep each private link to restore it on another phone. No owner account is needed.</small></dialog>
+    <section id="referral-section" class="referral-section" hidden=""><div><p class="eyebrow">GOOD THINGS ARE BETTER SHARED</p><h2>Bring a friend. Earn a little extra.</h2><p id="referral-offer"></p><small id="referral-progress"></small></div><details id="referral-disclosure"><summary>Your invitation link</summary><div id="referral-sharing"><label for="referral-link">Your public invitation link</label><input id="referral-link" type="url" readonly=""><div class="actions"><button id="share-referral">Invite a friend ↗</button><button id="copy-referral" class="secondary">Copy link</button></div><small>Share this invitation, not your private membership link. Your friend creates their own card.</small></div></details><p id="referral-message" role="status" aria-live="polite"></p></section>
+    <dialog id="add-card-dialog" aria-labelledby="add-card-title"><div class="dialog-heading"><h2 id="add-card-title" tabindex="-1">Add to your wallet</h2><button id="close-add-card" class="secondary" aria-label="Close add card" type="button">✕</button></div><p>Join another shop or restore an existing card. Your other cards stay in your wallet.</p><div class="wallet-dialog-tabs" role="tablist" aria-label="Add a card method"><button id="scan-shop" class="secondary" role="tab" aria-controls="scan-method" aria-selected="false">Scan Shop QR</button><button id="paste-card-tab" class="secondary" role="tab" aria-controls="paste-method" aria-selected="true">Paste Link</button></div><div id="scan-method" role="tabpanel" aria-labelledby="scan-shop" hidden><p>Point your camera at the shop’s signup QR.</p><div class="camera-frame"><video id="join-camera" muted="" playsinline="" hidden=""></video><span class="camera-guides" aria-hidden="true"></span></div></div><div id="paste-method" role="tabpanel" aria-labelledby="paste-card-tab"><form id="add-card-form"><label for="card-url">Shop signup link or private card link</label><input id="card-url" type="text" inputmode="url" required="" placeholder="Paste your shop or card link"><button>Continue →</button></form></div><p id="add-card-message" role="status" aria-live="polite"></p><small>Cards are saved on this device. Keep each private link to restore it on another phone. No owner account is needed.</small></dialog>
     </main>
-    <footer class="site-footer"><span>Loyalty<span class="footer-dot">.</span></span><span>Small moments. Lasting rewards.</span><a href="/business/" target="_blank" rel="noopener">For businesses ↗</a></footer>
+    <footer class="site-footer"><span>Loyalty<span class="footer-dot">.</span></span><span>Small moments. Lasting rewards.</span></footer>
 
 
 </body></html>

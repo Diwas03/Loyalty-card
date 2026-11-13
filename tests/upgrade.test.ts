@@ -46,7 +46,7 @@ test("confirmed purchases and compensating corrections reconcile an immutable te
     const cashier = request.agent(app).set("Authorization", "Bearer " + login.body.token);
     const m = (await db.query("SELECT coffee.enroll_customer('Member',NULL,'default') AS m")).rows[0].m;
     const url = `/api/staff/members/${m.id}/scan`, key = randomUUID();
-    await a.post(url).set("Idempotency-Key", key).send({}).expect(400);
+    await a.post(url).set("Idempotency-Key", key).send({}).expect(200);
     await Promise.all([1,2].map(() => a.post(url).set("Idempotency-Key",key).send({ confirm: true }).expect(200)));
     const adjustment = `/api/staff/members/${m.id}/adjustment`;
     const body = { delta: -1, reason: "Duplicate purchase correction", confirm: true };
@@ -69,7 +69,7 @@ test("confirmed purchases and compensating corrections reconcile an immutable te
   } finally { await db.end(); }
 });
 
-test("private links rotate without changing balances; transfer links expire and consume exactly once", async () => {
+test("staff cannot retrieve private card links; customer transfers expire and consume exactly once", async () => {
   const db=await memDb();
   try {
     await initializeHosted(db); const app=createHostedApp(db);
@@ -84,14 +84,19 @@ test("private links rotate without changing balances; transfer links expire and 
     await db.query("UPDATE coffee.card_transfers SET expires=0");
     await request(app).post("/api/recover").send({token:expired}).expect(410);
     const outstanding=(await request(app).post(`/api/members/${m.id}/transfer`).send({}).expect(200)).body.transferUrl.split("#")[1];
-    const rotated=(await owner.post(`/api/staff/members/${m.id}/rotate-link`).send({confirm:true}).expect(200)).body.customerUrl.split("=")[1];
-    await request(app).get(`/api/members/${m.id}`).expect(404);
-    await request(app).get(`/api/members/${m.id}/qr`).expect(404);
-    assert.equal((await request(app).get(`/api/members/${rotated}`).expect(200)).body.stamps,0);
-    await request(app).get(`/api/members/${rotated}/qr`).expect(200);
-    await request(app).post("/api/recover").send({token:outstanding}).expect(410);
+    const details=(await owner.get(`/api/staff/members/${m.id}`).expect(200)).body;
+    assert.equal(Object.hasOwn(details,'privateCardToken'),false);
+    assert.equal(Object.hasOwn(details,'customerUrl'),false);
+    await owner.post(`/api/staff/members/${m.id}/rotate-link`).send({confirm:true}).expect(410);
+    assert.equal((await request(app).get(`/api/members/${m.id}`).expect(200)).body.stamps,0);
+    await request(app).get(`/api/members/${m.id}/qr`).expect(200);
+    await request(app).post("/api/recover").send({token:outstanding}).expect(200);
     await owner.post("/api/staff/region").send({currency:"BTN",country:"BT",timezone:"Asia/Thimphu"}).expect(200);
     await owner.post("/api/staff/region").send({currency:"BTN",country:"BT",timezone:"Invalid/zone"}).expect(400);
+    const privateToken=randomUUID();
+    await db.query('UPDATE coffee.members SET card_token=$1 WHERE id=$2',[privateToken,m.id]);
+    const card=(await request(app).get('/api/members/'+privateToken).expect(200)).body;
+    assert.equal(card.id,privateToken);assert.equal(card.membershipCode,m.id);assert.notEqual(card.membershipCode,card.id);
   } finally { await db.end(); }
 });
 

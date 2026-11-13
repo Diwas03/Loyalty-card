@@ -17,6 +17,7 @@ app.get('/api/staff/overview', (_req, res) => res.json({ metrics: { customers: 4
 app.get('/api/staff/referrals', (_req, res) => res.json({ settings: { referrals_enabled: true, referral_reward_kind: 'stamps', referral_reward_amount: 1 }, referrals: [] }));
 app.get('/api/staff/shop' , (_req, res) => res.json(shop));
 app.get('/api/staff/programme', (_req, res) => res.json({ stampGoal: 8 }));
+app.get('/api/staff/rewards', (_req,res) => res.json({customers:[member],nextCursor:null}));
 app.get('/api/staff/members', (_req, res) => res.json([member, { ...member, id: '87654321-1234-1234-1234-123456789abc', name: 'Jordan Lee', stamps: 2, rewards: 0 }]));
 app.get('/api/staff/members/:id', (_req, res) => res.json(member));
 app.post('/api/login', async (_req, res) => { await new Promise(resolve => setTimeout(resolve, 250)); res.status(401).json({ error: 'Incorrect username or password.' }); });
@@ -31,6 +32,16 @@ try {
   const page = await context.newPage();
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
+  const openSections = async () => {
+    if (!(await page.locator('#section-navigation').evaluate(element => element.open))) await page.locator('#section-toggle').click();
+  };
+  await page.setViewportSize({width:1440,height:1000});await page.goto(base+'/');
+  await page.locator('#empty-paste-card').waitFor();await page.screenshot({path:'/tmp/loyalty-ui/wallet-empty-desktop.png',fullPage:true});
+  await page.setViewportSize({width:390,height:844});await page.locator('#empty-paste-card').click();
+  assert.equal(await page.locator('#paste-method').isVisible(),true);assert.equal(await page.locator('#scan-method').isVisible(),false);
+  await page.screenshot({path:'/tmp/loyalty-ui/add-card-mobile.png',fullPage:true});await page.keyboard.press('Escape');
+  await page.locator('#empty-scan-card').click();await page.locator('#add-card-message').filter({hasText:'Camera unavailable'}).waitFor();
+  assert.equal(await page.locator('#paste-method').isVisible(),true);await page.locator('#close-add-card').click();
   for (const width of [375, 768, 1440]) {
     await page.setViewportSize({ width, height: 1000 });
     for (const [name, path] of Object.entries({ business: '/business/', home: '/', card: `/?member=${id}`, join: '/join.html?shop=default', login: '/business/login.html', register: '/business/register.html', staff: '/business/dashboard.html#customers', poster: '/shop.html?shop=default' })) {
@@ -38,19 +49,22 @@ try {
       if (name === "staff") await page.evaluate(() => sessionStorage.setItem("loyalty-staff-handoff", JSON.stringify({ token: "a".repeat(64), createdAt: Date.now() })));
       await page.goto(base + path);
       if (name === 'card') await page.locator('#card-progress').waitFor();
-      if (['home','card','join'].includes(name)) assert.equal(await page.locator('nav a[href*="login"]').count(), 0);
+      if (['home','card','join'].includes(name)) assert.equal(await page.locator('a[href^="/business"],a[href="/login.html"],a[href="/staff.html"]').count(), 0);
+      if (['business','login','register','staff'].includes(name)) assert.equal(await page.locator('a[href="/"],a[href^="/?member="],#customer-link,#customer-join-link').count(), 0);
       if (name === 'join') await page.waitForFunction(() => !document.querySelector('#submit').disabled);
       if (name === 'staff') await page.locator('#customers .customer-row').first().waitFor();
       if (name === 'staff') {
         for (const tab of ['overview', 'customers', 'scan', 'design', 'referrals', 'team']) {
+          await openSections();
           await page.locator('#tab-' + tab).click();
           assert.equal(await page.locator('#panel-' + tab).isVisible(), true);
           assert.equal(await page.locator('#tab-' + tab).getAttribute('aria-selected'), 'true');
           await page.screenshot({ path: `/tmp/loyalty-ui/dashboard-${tab}-${width}.png`, fullPage: true });
           assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), `${tab}: overflow at ${width}`);
         }
+        await openSections();
         await page.locator('#tab-customers').focus();
-        await page.keyboard.press('ArrowRight');
+        await page.keyboard.press(await page.locator('.business-tabs').getAttribute('aria-orientation') === 'vertical' ? 'ArrowDown' : 'ArrowRight');
         assert.equal(await page.locator('#tab-scan').getAttribute('aria-selected'), 'true');
         await page.locator('#tab-customers').click();
       }
@@ -62,16 +76,18 @@ try {
   await page.goto(base + '/business/login.html');
   await page.locator('#username').fill('alex.owner');
   await page.locator('#password').fill('test-password-only');
+  await page.locator('#show-password').check();assert.equal(await page.locator('#password').getAttribute('type'),'text');
+  await page.locator('#show-password').uncheck();assert.equal(await page.locator('#password').getAttribute('type'),'password');
   await page.locator('#login button').click();
   await page.getByText('Incorrect username or password.').waitFor();
   assert.equal(await page.locator('#message').getAttribute('data-tone'), 'error');
   assert.equal(await page.locator('#login button').isEnabled(), true);
   await page.evaluate(() => sessionStorage.setItem("loyalty-staff-handoff", JSON.stringify({ token: "a".repeat(64), createdAt: Date.now() })));
   await page.goto(base + '/business/dashboard.html#customers');
-  await page.locator('#customers .customer-row').first().click();
-  await page.waitForFunction(() => document.querySelector('#customer-name').textContent === 'Alex Morgan');
+  await page.locator('#customers .reward-confirm').first().waitFor();
+  assert.equal(await page.locator('#panel-customers #history,#panel-customers #delivery,#panel-customers #customer-secondary-actions').count(),0);
   assert.equal(await page.locator('#purchase').count(), 0);
-  assert.equal(await page.locator('#redeem').isEnabled(), true);
+  assert.equal(await page.locator('.reward-confirm').first().isEnabled(), true);
   assert.equal(await page.locator('details.delivery-panel').getAttribute('open'), null);
   assert.deepEqual(errors, []);
   console.log('UI smoke passed: customer/business pages and all six dashboard tabs at 375/768/1440px, no overflow or JS errors, login recovery and customer selection.');

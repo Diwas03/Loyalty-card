@@ -28,10 +28,13 @@ const message = (t, error = false) => {
   $("#message").textContent = t;
   $("#message").dataset.tone = error ? "error" : "success";
 };
+let shopLocation = {shopAddress:"",shopMapsUrl:""};
 let currentShopName = "this shop", currentLocationName = "current location", selectedMember, savedGoal = 8, savedDesignSignature = "", displayTimezone = "Asia/Thimphu", lookupGeneration = 0;
 const outcome = (value, error = false) => {
   $("#customer-outcome").textContent = value;
   $("#customer-outcome").dataset.tone = error ? "error" : "success";
+  if (currentTab === "customers") { $("#rewards-action-status").textContent=value; $("#rewards-action-status").dataset.tone=error?"error":"success"; }
+  $("#retry-reward").hidden = !pending || pending.action !== "redeem";
 };
 const scanFeedback = (text, error = false) => {
   $("#scan-feedback").hidden = false;
@@ -41,6 +44,7 @@ const scanFeedback = (text, error = false) => {
 let selected,
   controls,
   role,
+  pilotLedger = false,
   scanStamping = false,
   scanGeneration = 0,
   busy = false,
@@ -82,7 +86,7 @@ function text(tag, value, className) {
 }
 let currentTab, dashboardEnabled = false;
 const availableTabs = new Set(["customers", "scan"]);
-const sectionNames = { overview: "Overview", customers: "Customers", scan: "Scan and lookup", design: "Programs & cards", referrals: "Referrals", team: "Team & locations", reports: "Reports" };
+const sectionNames = { overview: "Overview", customers: "Rewards", scan: "Scan and lookup", design: "Programs & cards", referrals: "Referrals", team: "Team", reports: "Reports" };
 const narrowNavigation = matchMedia("(max-width: 900px)");
   $("#preview-disclosure").open = !narrowNavigation.matches;
 function configureNavigation() {
@@ -93,10 +97,11 @@ function configureNavigation() {
 }
 narrowNavigation.addEventListener("change", configureNavigation);
 function focusCustomer() {
-  $("#panel-customers").classList.add("member-focused");
+  $("#customer-result").hidden = false;
   $("#customer-name").focus({ preventScroll: false });
 }
 function showTab(key, focus = false) {
+  if (key === "rewards") key = "customers";
   if (!availableTabs.has(key)) key = role === "owner" && dashboardEnabled ? "overview" : "customers";
   if (currentTab === "scan" && key !== "scan") {
     ++scanGeneration; controls?.stop();
@@ -104,19 +109,22 @@ function showTab(key, focus = false) {
   }
   currentTab = key;
   $("#section-heading").textContent = sectionNames[key];
+  $("#section-description").textContent = ({overview:"Your latest shop activity, all in one place.",customers:"Recognise your regulars. Review available rewards and confirm each redemption.",scan:"One scan. One stamp. Keep your counter moving.",design:"Make your card feel like your shop. Publish your address, appearance and reward rules.",referrals:"See how your customers help your community grow.",team:"Manage your staff and their counter access.",reports:"Understand recorded activity with clear, auditable numbers."})[key];
   $("#current-section").textContent = sectionNames[key];
-  $(".quick-scan").hidden = key === "scan";
+  $(".quick-scan").hidden = key === "scan" || key === "customers";
+  $("#section-description").hidden = key === "customers";
   for (const button of document.querySelectorAll("[data-tab]")) {
     const active = button.dataset.tab === key;
     button.setAttribute("aria-selected", String(active)); button.tabIndex = active ? 0 : -1;
     $("#panel-" + button.dataset.tab).hidden = !active;
     if (active && focus) button.focus();
   }
-  history.replaceState(null, "", "#" + key);
+  history.replaceState(null, "", "#" + (key === "customers" ? "rewards" : key));
+  if (key === "customers") search().catch(error => message(error.message,true));
   if (key === "overview") loadOverview().catch(error => message(error.message));
   if (key === "referrals") loadReferrals().catch(error => message(error.message));
   if (key === "reports") loadReport();
-  if (key === "team" && $("#team-management")) loadTeam();
+  if (["team","design"].includes(key) && $("#team-management")) loadTeam();
 }
 $(".business-tabs").addEventListener("click", event => {
   const button = event.target.closest("[data-tab]");
@@ -139,7 +147,7 @@ $(".business-tabs").addEventListener("keydown", event => {
     const next = event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1 : (index + (event.key === nextKey ? 1 : -1) + tabs.length) % tabs.length;
     showTab(tabs[next].dataset.tab, true);
 });
-$("#back-to-results").onclick = () => { $("#panel-customers").classList.remove("member-focused"); $("#query").focus(); };
+$("#back-to-results").onclick = () => { $("#customer-result").hidden=true; $("#scan").focus(); };
 $(".quick-scan").onclick = event => { event.preventDefault(); showTab("scan"); $("#scan").focus(); };
 window.addEventListener("hashchange", () => showTab(location.hash.slice(1)));
 const activityName = kind => ({purchase:"Qualifying paid visit",referral:"Referral bonus",redeem:"Reward redeemed",adjustment:"Progress corrected",expire:"Reward expired",refund:"Refund recorded",revoke:"Reward revoked",opening:"Opening balance"})[kind] || "Recorded account activity";
@@ -175,19 +183,18 @@ async function loadOverview() {
   try {
     const result = await api("/api/staff/overview");
     $("#shop-metrics").replaceChildren();
-    $("#shop-metrics").className = "metric-groups";
-    const metricGroups = {};
-    for(const [key,label] of [["members","Memberships"],["visits-rewards","Visits & rewards"],["referrals","Referrals"]]) {
-      const group=text("div","","metric-group");group.append(text("h3",label));
-      const values=text("div","","metrics-grid");group.append(values);$("#shop-metrics").append(group);metricGroups[key]=values;
-    }
-    for (const [key, label, note] of [["customers", "Customers", "All memberships"], ["active_customers", "Active customers", "Paid visit in the last 30 days"], ["purchases_24h", "Paid visits", "Last 24 hours"], ["available_rewards", "Available rewards", "Earned and not yet redeemed"], ["referrals", "Referred signups", "All time"], ["credited_referrals", "Qualified referrals", "First paid visit completed"]]) {
-      const metric = text("div", "", "metric"); metric.dataset.group = ["customers","active_customers"].includes(key) ? "members" : ["referrals","credited_referrals"].includes(key) ? "referrals" : "visits-rewards"; metric.append(text("span", label), text("strong", String(result.metrics[key] ?? "Not available")), text("small", note)); metricGroups[metric.dataset.group].append(metric);
+    $("#shop-metrics").className = "metrics-grid overview-metrics";
+    for (const [key, label, note] of [["customers", "Customers", "All memberships"], ["active_customers", "Active customers", "Paid visit in the last 30 days"], ["purchases_24h", "Paid visits", "Last 24 hours"], ["available_rewards", "Available rewards", "Earned and not yet redeemed"]]) {
+      const metric = text(key === "available_rewards" ? "button" : "div", "", "metric");
+      metric.dataset.metric = key;
+      metric.append(text("span",label),text("strong",String(result.metrics[key] ?? "Not available")),text("small",note));
+      if(key === "available_rewards") { metric.type="button"; metric.classList.add("metric-action"); metric.append(text("span","Review rewards","metric-action-label")); metric.onclick=()=>showTab("customers",true); }
+      $("#shop-metrics").append(metric);
     }
     $("#shop-regulars").replaceChildren();
     for (const customer of result.regulars) {
       const button = text("button", "", "customer-row"); button.append(text("span", customer.name, "customer-row-name"), text("span", `${customer.purchases} paid visits · ${customer.rewards} rewards`, "customer-row-meta"));
-      button.onclick = () => { $("#member").value = customer.id; showTab("customers"); lookup().then(found => { if (found) focusCustomer(); }).catch(error => outcome(error.message,true)); };
+      button.onclick = () => { $("#member").value = customer.id; showTab("scan"); lookup().then(found => { if (found) focusCustomer(); }).catch(error => outcome(error.message,true)); };
       $("#shop-regulars").append(button);
     }
     if (!result.regulars.length) $("#shop-regulars").append(text("p", "Customers will appear here when they join."));
@@ -195,9 +202,10 @@ async function loadOverview() {
       const row = text("div", `${event.name} · ${activityName(event.kind)}`, "activity"); row.append(text("small", `${date(event.created_at)} · ${event.actor}`));
       return row;
     }, "Recorded visits, redemptions and referral bonuses will appear here.", 20);
-    $("#overview-updated").textContent = "Updated " + new Date(result.updatedAt).toLocaleTimeString() + " · refreshes every 30 seconds while open";
+    $("#overview-updated").textContent = "Updated " + new Date(result.updatedAt).toLocaleTimeString() + "";
   } finally { overviewLoading = false; $("#panel-overview").setAttribute("aria-busy", "false"); }
 }
+$("#open-rewards").onclick = () => showTab("customers",true);
 $("#refresh-overview").onclick = () => loadOverview().catch(error => message(error.message));
 setInterval(() => { if (!document.hidden && currentTab === "overview") loadOverview().catch(error => message(error.message)); }, 30000);
 async function loadReferrals() {
@@ -229,26 +237,46 @@ $("#referral-settings").onsubmit = async event => {
 function date(ms) {
   return ms ? new Date(Number(ms)).toLocaleString(undefined,{timeZone:displayTimezone}) : "Earlier record";
 }
-async function search() {
-  const rows = await api(
-    "/api/staff/members?q=" + encodeURIComponent($("#query").value),
-  );
-  $("#customers").replaceChildren();
-  for (const m of rows) {
-    const b = text("button", "", "customer-row");
-    b.append(text("span", m.name, "customer-row-name"));
-    b.append(text("span", `${m.stamps}/${m.stampGoal || 8} stamps · ${m.rewards} rewards`, "customer-row-meta"));
-    b.classList.toggle("is-selected", selected === m.id);
-    b.onclick = () => {
-      if (busy) return;
-      document.querySelectorAll(".customer-row").forEach((row) => row.classList.remove("is-selected"));
-      b.classList.add("is-selected");
-      $("#member").value = m.id;
-      lookup().then(found => { if (found) focusCustomer(); }).catch((e) => outcome(e.message,true));
-    };
-    $("#customers").append(b);
+let rewardCursor = null, rewardListGeneration = 0, choosingReward = false;
+async function confirmListedReward(id, button) {
+  if (busy || choosingReward) return;
+  choosingReward=true; button.disabled=true;
+  try {
+    $("#member").value=id;
+    if (await lookup()) await recordAction("redeem");
+  } catch(error) { outcome(error.message,true); }
+  finally { choosingReward=false; button.disabled=false; }
+}
+$("#retry-reward").onclick = () => { if(pending?.action === "redeem") confirmListedReward(pending.id,$("#retry-reward")); };
+
+async function search(append = false) {
+  const generation = ++rewardListGeneration;
+  if (!append) { rewardCursor = null; $("#customers").replaceChildren(); }
+  $("#refresh-rewards").disabled = $("#more-rewards").disabled = true;
+  $("#more-rewards").hidden = true;
+  $("#rewards-status").textContent = "Loading eligible customers…";
+  try {
+    const result = await api("/api/staff/rewards" + (append && rewardCursor ? "?after=" + encodeURIComponent(rewardCursor) : ""));
+    if (generation !== rewardListGeneration) return;
+    for (const m of result.customers) {
+      const b = text("div", "", "customer-row reward-row");
+      const customer=text("div","","reward-person");
+      customer.append(text("span",m.name,"customer-row-name"),text("span",`${m.rewards} available reward${m.rewards === 1 ? "" : "s"}`,"customer-row-meta"));
+      const confirmButton=text("button","Confirm reward","reward-confirm");confirmButton.type="button";
+      confirmButton.setAttribute("aria-label","Confirm reward for "+m.name);
+      confirmButton.onclick=()=>confirmListedReward(m.id,confirmButton);
+      b.append(customer,confirmButton);
+      $("#customers").append(b);
+    }
+    rewardCursor = result.nextCursor;
+    $("#more-rewards").hidden = !rewardCursor;
+    $("#rewards-status").textContent = $("#customers").children.length ? "" : "No customers have an available reward yet.";
+  } catch (error) {
+    if (generation === rewardListGeneration) $("#rewards-status").textContent = "Could not refresh rewards. Please try again. " + error.message;
+    throw error;
+  } finally {
+    if (generation === rewardListGeneration) { $("#refresh-rewards").disabled = $("#more-rewards").disabled = false; $("#retry-reward").hidden=!pending || pending.action!=="redeem"; }
   }
-  if (!rows.length) $("#customers").append(text("p", "No customers found."));
 }
 async function lookup() {
   if (busy) return false;
@@ -256,10 +284,8 @@ async function lookup() {
   if (pending && pending.id !== requested) throw Error("Resolve the pending transaction for the previous member before selecting another card.");
   if(selected !== requested) { outcome(""); message(""); $("#customer-secondary-actions").open=false; $("#correction")?.reset(); }
   $("#redeem").disabled = true;
-  $("#purchase").disabled = true;
   selected = undefined;
   selectedMember = undefined;
-  $("#customer-link").hidden = true;
   $("#customer-secondary-actions").hidden = true;
   $("#history").replaceChildren(text("p","Waiting for a verified membership…"));
   $("#delivery").replaceChildren();
@@ -274,12 +300,9 @@ async function lookup() {
   selected = m.id;
   selectedMember = m;
   $("#customer-secondary-actions").hidden = false;
-  $("#purchase").disabled = false;
   $("#customer-name").textContent = m.name;
   $("#balance").textContent =
     `${m.stamps} / ${m.stampGoal} stamps · ${m.rewards} available rewards`;
-  $("#customer-link").hidden = false;
-  $("#customer-link").href = "/?member=" + encodeURIComponent(m.privateCardToken || m.id);
   $("#redeem").disabled = m.rewards < 1;
   $("#redeem").textContent = `Redeem one ${m.rewardLabel || "reward"}`;
   if ($("#correction")) $("#correction").hidden = !["owner","manager"].includes(role);
@@ -353,13 +376,11 @@ $("#programme").onsubmit = async (e) => {
     $("#programme-status").dataset.tone = "error";
   }
 };
-$("#search").onsubmit = (e) => {
-  e.preventDefault();
-  search().catch((e) => message(e.message));
-};
+$("#refresh-rewards").onclick = () => search().catch(e => message(e.message,true));
+$("#more-rewards").onclick = () => search(true).catch(e => message(e.message,true));
 $("#lookup").onsubmit = (e) => {
   e.preventDefault();
-  lookup().then(found => { if(found) { showTab("customers"); focusCustomer(); } }).catch((e) => scanFeedback(e.message,true));
+  lookup().then(found => { if(found) { showTab("scan"); focusCustomer(); } }).catch((e) => scanFeedback(e.message,true));
 };
 $("#refresh").onclick = () => lookup().catch((e) => message(e.message));
 $("#logout").onclick = async () => {
@@ -376,11 +397,12 @@ $("#logout").onclick = async () => {
 async function installWorkspacePicker(me) {
   const workspaces=await api("/api/staff/workspaces");
   $("#workspace-label")?.remove();
-  const label=text("label","Business and location");const select=document.createElement("select");select.id="workspace-picker";
+  const label=text("label","Record activity at");const select=document.createElement("select");select.id="workspace-picker";
   label.id="workspace-label";
   for(const workspace of workspaces){const option=text("option",workspace.location_name+" · "+workspace.name+" · "+workspace.role);option.value=JSON.stringify([workspace.shop_id,workspace.location_id]);option.selected=workspace.shop_id===me.shopId&&workspace.location_id===me.locationId;select.append(option);}
   currentLocationName = workspaces.find(workspace => workspace.shop_id === me.shopId && workspace.location_id === me.locationId)?.location_name || "current location";
-  label.append(select);$("#identity").after(label);
+  label.append(select);$("#work-location-picker").append(label);
+  $("#work-location").hidden = workspaces.length <= 1;
   select.onchange=async()=>{
     if(busy||pending){message("Resolve your pending transaction before changing workspace.",true);select.value=JSON.stringify([me.shopId,me.locationId]);return;}
     select.disabled=true;
@@ -390,8 +412,11 @@ async function installWorkspacePicker(me) {
 }
 function installTeamTools(){
   const section=document.createElement("section");section.id="team-management";
-  section.innerHTML='<h2>Team members</h2><p>Owners manage settings and access. Managers operate the counter, correct progress and read reports. Cashiers record purchases and redeem rewards at assigned locations.</p><p id="team-status" role="status"></p><div id="team-list"></div><details id="locations-management"><summary>Manage locations</summary><ul id="location-list"></ul><form id="location-create"><label>New location name<input name="name" maxlength="80" required></label><button>Create location</button></form></details><details id="existing-account-invite"><summary>Invite an existing staff account</summary><form id="team-invite"><p>This private invitation works once within 48 hours and requires an existing signed-in staff account.</p><label>Role<select name="role"><option value="cashier">Cashier</option><option value="manager">Manager</option></select></label><div id="invite-locations"></div><button>Create invitation</button><label>Private invitation link<input name="link" readonly></label></form></details>';
+  section.innerHTML='<h2>Team members</h2><p>Owners manage settings and access. Managers operate the counter, correct progress and read reports. Cashiers record purchases and redeem rewards at assigned locations.</p><p id="team-status" role="status"></p><div id="team-list"></div><details id="existing-account-invite"><summary>Invite an existing staff account</summary><form id="team-invite"><p>This private invitation works once within 48 hours and requires an existing signed-in staff account.</p><label>Role<select name="role"><option value="cashier">Cashier</option><option value="manager">Manager</option></select></label><div id="invite-locations"></div><button>Create invitation</button><label>Private invitation link<input name="link" readonly></label></form></details>';
   $("#panel-team").append(section);
+  const counters=document.createElement("details");counters.id="locations-management";
+  counters.innerHTML='<summary>Advanced: service counters</summary><p>Optional counters for staff access and activity records. The public address above is what customers see on their cards.</p><ul id="location-list"></ul><form id="location-create"><label>Counter name<input name="name" maxlength="80" required></label><button>Create counter</button></form>';
+  $("#shop-location-section").append(counters);
   const newAccount=document.createElement("details");newAccount.id="new-staff-account";newAccount.append(text("summary","Create a new staff account"),$("#accounts-section"));section.append(newAccount);
   $("#location-create").onsubmit=async event=>{
     event.preventDefault();const form=event.target,button=form.querySelector("button");button.disabled=true;
@@ -405,7 +430,7 @@ function installTeamTools(){
   };
 }
 function locationChoices(locations, selected = []) {
-  const fieldset=document.createElement("fieldset");fieldset.className="location-options";fieldset.append(text("legend","Assigned locations"));
+  const fieldset=document.createElement("fieldset");fieldset.className="location-options";fieldset.append(text("legend","Counter access"));
   for(const loc of locations){const label=text("label",loc.name),input=document.createElement("input");input.type="checkbox";input.name="locations";input.value=loc.id;input.checked=selected.includes(loc.id);input.className="inline-check";label.prepend(input);fieldset.append(label);}
   return fieldset;
 }
@@ -418,7 +443,7 @@ async function loadTeam(){
     $("#location-list").replaceChildren(...data.locations.map(loc=>text("li",loc.name+(loc.active ? "" : " · Inactive"))));
     for(const member of data.members){
       const entry=document.createElement("details");entry.className="team-entry";
-      const summary=document.createElement("summary");summary.append(text("strong",member.full_name||member.username),text("span",member.role+" · "+(member.enabled?"Enabled":"Disabled"),"state-badge"),text("small",member.role==="owner"?"All business locations":data.locations.filter(loc=>member.locations.includes(loc.id)).map(loc=>loc.name).join(", ")||"No assigned locations"),text("span","Edit access","edit-hint"));entry.append(summary);
+      const summary=document.createElement("summary");summary.append(text("strong",member.full_name||member.username),text("span",member.role+" · "+(member.enabled?"Enabled":"Disabled"),"state-badge"),text("small",member.role==="owner"?"All service counters":data.locations.filter(loc=>member.locations.includes(loc.id)).map(loc=>loc.name).join(", ")||"No assigned counters"),text("span","Edit access","edit-hint"));entry.append(summary);
       entry.addEventListener("toggle",()=>{if(entry.open)for(const other of container.querySelectorAll("details.team-entry"))if(other!==entry)other.open=false;});
       const form=document.createElement("form");form.className="team-member";form.append(text("p",`Account: ${member.username}. Saving role/access changes revokes this person’s active sessions.`));
       const roleLabel=text("label","Business role"),roleSelect=document.createElement("select");roleSelect.name="role";
@@ -431,7 +456,7 @@ async function loadTeam(){
         catch(error){message(error.message,true);}finally{button.disabled=false;}};
       entry.append(form);container.append(entry);
     }
-  }catch(error){container.textContent=error.message;}
+  }catch(error){container.textContent=error.message;$("#location-list").replaceChildren(text("li","Could not load counters. "+error.message));}
   finally{container.setAttribute("aria-busy","false");}
 }
 function installPilotTools() {
@@ -439,18 +464,6 @@ function installPilotTools() {
   correction.id = "correction"; correction.hidden = true;
   correction.innerHTML = '<h3>Correct stamp progress</h3><p>Owner or manager only. Corrections preserve rewards and cannot cross a reward threshold. This is not a sale refund.</p><label>Stamp change<input name="delta" type="number" min="-100" max="100" required></label><label>Reason<input name="reason" minlength="3" maxlength="240" required></label><button>Save correction</button>';
   $("#customer-secondary-actions").append(correction);
-  const rotate = document.createElement("button"); rotate.type = "button"; rotate.className = "secondary"; rotate.textContent = "Replace private card link";
-  correction.append(rotate);
-  rotate.hidden = role !== "owner";
-  rotate.onclick = async () => {
-    if (!selected || !confirm("Invalidate the previous private link? Existing shortcuts will need the replacement. The balance and scanned membership ID stay the same.")) return;
-    rotate.disabled = true;
-    try {
-      const result = await api("/api/staff/members/" + selected + "/rotate-link", { method:"POST", body:JSON.stringify({confirm:true}) });
-      $("#customer-link").href = result.customerUrl;
-      message("Private link replaced. Open the customer card link and share it securely.");
-    } catch(error) { message(error.message,true); } finally { rotate.disabled = false; }
-  };
   const region = document.createElement("form");
   region.innerHTML = '<h3>Regional settings</h3><p>Bhutan defaults: Nu. (BTN), Asia/Thimphu, BT (+975). No phone number is required for membership.</p><label>Currency code<input name="currency" value="BTN" required pattern="[A-Z]{3}"></label><label>Timezone<input name="timezone" value="Asia/Thimphu" required></label><label>Country code<input name="country" value="BT" required pattern="[A-Z]{2}"></label><button>Save regional settings</button><p role="status"></p>';
   region.id = "regional-settings";
@@ -522,7 +535,7 @@ async function loadReport() {
 }
 
 async function recordAction(action, automatic = false) {
-    if (!selected || busy || selectedMember?.id !== selected) return;
+    if (!selected || busy || selectedMember?.id !== selected || (action === "purchase" && !automatic)) return;
     const id = selected;
     const actionMember = selectedMember;
     if (pending && (pending.id !== id || pending.action !== action)) {
@@ -531,28 +544,22 @@ async function recordAction(action, automatic = false) {
       );
       return;
     }
-    if (
-      !confirm(
-        action === "purchase"
-          ? `Record one qualifying paid purchase for ${selectedMember.name}?\n${currentShopName} · ${currentLocationName}\nCurrent balance: ${selectedMember.stamps}/${selectedMember.stampGoal} stamps, ${selectedMember.rewards} rewards.`
-          : `Redeem one ${selectedMember.rewardLabel || "reward"} for ${selectedMember.name}?\n${currentShopName} · ${currentLocationName}\nThis consumes one available reward and earns no stamp.`,
-      )
-    )
-      return;
+    if (action === "redeem" && !confirm(
+      `Redeem one ${selectedMember.rewardLabel || "reward"} for ${selectedMember.name}?\n${currentShopName} · ${currentLocationName}\nThis consumes one available reward and earns no stamp.`,
+    )) return;
     if (!pending) {
       pending = { id, action, key: crypto.randomUUID(), source: automatic ? "scan" : "manual" };
       sessionStorage.setItem("coffeePending", JSON.stringify(pending));
     }
     busy = true;
     let saved = false;
-    $("#purchase").disabled = true;
     $("#redeem").disabled = true;
     try {
       const scanned = action === "purchase";
       const result = await api(`/api/staff/members/${id}/${scanned ? "scan" : action}`, {
         method: "POST",
         headers: { "Idempotency-Key": pending.key },
-        body: JSON.stringify({ confirm: true }),
+        body: JSON.stringify(scanned ? {} : { confirm: true }),
       });
       saved = true;
       pending = null;
@@ -560,8 +567,8 @@ async function recordAction(action, automatic = false) {
       busy = false;
       await lookup();
       await search();
-      outcome(scanned
-        ? (result.awarded ? `One stamp added for ${actionMember.name}. Confirmed balance: ${result.stamps}/${result.stampGoal} stamps · ${result.rewards} rewards.` : "This card was just recorded. No extra stamp was added. Wait at least 5 seconds before recording another paid purchase.")
+      outcome(currentTab === "customers" && !scanned ? `Reward confirmed for ${actionMember.name}.` : scanned
+        ? (result.awarded ? `One stamp added for ${actionMember.name}. Confirmed balance: ${result.stamps}/${result.stampGoal} stamps · ${result.rewards} rewards.` : "This request was already handled; no additional stamp was added.")
         : `Reward redeemed for ${actionMember.name}. Confirmed balance: ${result.stamps}/${result.stampGoal} stamps · ${result.rewards} rewards.`);
     } catch (e) {
       busy = false;
@@ -581,10 +588,8 @@ async function recordAction(action, automatic = false) {
             " Your request key is retained; retry the same action if the response was lost.",
         );
       $("#redeem").disabled = !selected || !selectedMember?.rewards;
-      $("#purchase").disabled = !selected;
     }
   };
-$("#purchase").onclick = () => recordAction("purchase");
 $("#redeem").onclick = () => recordAction("redeem");
 $("#scan").onclick = async () => {
   if (busy || !role || $("#scan").disabled) return;
@@ -598,7 +603,7 @@ $("#scan").onclick = async () => {
   $("#scan").disabled = true;
   try {
     controls?.stop();
-    scanFeedback("Point the camera at the customer’s membership QR for " + currentShopName + ". Scanning identifies the card. Confirm the paid purchase after checking it.");
+    scanFeedback("Point the camera at the customer’s membership QR for " + currentShopName + ". Each scan adds one stamp immediately. Start the scanner again to add another.");
     const scannerControls = await new ZXingBrowser.BrowserQRCodeReader().decodeFromVideoDevice(
       undefined,
       "video",
@@ -615,8 +620,8 @@ $("#scan").onclick = async () => {
           const found = await lookup();
           if(!found) return;
           if (generation !== scanGeneration) return;
-          message("Card identified. Check the customer and confirm a qualifying purchase.");
-          showTab("customers");
+          await recordAction("purchase", true);
+          showTab("scan");
           focusCustomer();
         } catch (error) {
           scanFeedback(error.invalidQR || error.status === 404 ? "Invalid QR code. Please show a valid customer membership QR for " + currentShopName + "." : error.message, true);
@@ -661,6 +666,17 @@ $("#staff-account").onsubmit = async (event) => {
   }
 };
 let logoData = "";
+$("#shop-location-form").onsubmit = async event => {
+  event.preventDefault(); const button=event.currentTarget.querySelector("button"); button.disabled=true;
+  $("#shop-location-status").textContent="Publishing location…";
+  try {
+    shopLocation=await api("/api/staff/shop-location",{method:"POST",body:JSON.stringify({address:$("#shop-address").value,mapsUrl:$("#shop-maps-url").value})});
+    $("#shop-location-status").textContent="Published. Customers will see this location when their cards refresh.";
+    updatePreview();
+  } catch(error) { $("#shop-location-status").textContent=error.message; }
+  finally { button.disabled=false; }
+};
+for(const field of ["#shop-address","#shop-maps-url"]) $(field).addEventListener("input",()=>{$("#shop-location-status").textContent="Unsaved location changes. Publish to update customer cards.";});
 function designPayload() {
   return {
     name: $("#shop-name").value.trim(), color: $("#shop-color").value,
@@ -671,7 +687,7 @@ function designPayload() {
 }
 function updatePreview() {
   const design = designPayload();
-  CardUI.render($("#card-preview"), { ...design, shopName: design.name || "Your shop", shopColor: design.color, name: "Sample member", stamps: Math.min(3,savedGoal-1), rewards: 0, stampGoal: savedGoal }, { preview: true });
+  CardUI.render($("#card-preview"), { ...design, ...shopLocation, shopName: design.name || "Your shop", shopColor: design.color, name: "Sample member", stamps: Math.min(3,savedGoal-1), rewards: 0, stampGoal: savedGoal }, { preview: true });
   $("#preview-scope").textContent = `Sample web card · Saved reward target: ${savedGoal} stamps. ${JSON.stringify(design) === savedDesignSignature ? "Appearance matches the last saved version." : "Appearance changes are not published yet."} Reward rules have their own save below.`;
 }
 for (const input of $("#shop-branding").querySelectorAll("input:not([type=file]),select")) input.addEventListener("input", updatePreview);
@@ -715,6 +731,7 @@ window.addEventListener("pagehide", () => { controls?.stop(); staffSession = und
   try {
     const me = await api("/api/staff/me");
     role = me.role;
+    pilotLedger = me.pilotLedger === true;
     scanStamping = me.scanStamping === true;
     dashboardEnabled = me.businessDashboard === true;
     if (role === "owner") {
@@ -723,7 +740,6 @@ window.addEventListener("pagehide", () => { controls?.stop(); staffSession = und
       if (dashboardEnabled) for (const key of ["overview", "referrals"]) { availableTabs.add(key); $("#tab-" + key).hidden = false; }
     }
     if (me.shopId) {
-      $("#customer-join-link").href = "/join.html?shop=" + encodeURIComponent(me.shopId);
       $("#shop-qr-link").href = "/shop.html?shop=" + encodeURIComponent(me.shopId);
       const shop = await api("/api/staff/shop");
       $("nav a").textContent = shop.name;
@@ -737,6 +753,10 @@ window.addEventListener("pagehide", () => { controls?.stop(); staffSession = und
       $("#stamp-icon").value = shop.stamp_icon || "check";
       $("#card-style").value = shop.card_style || "classic";
       logoData = shop.logo_data || "";
+      shopLocation = {shopAddress:shop.shop_address || "",shopMapsUrl:shop.shop_maps_url || ""};
+      $("#shop-address").value = shopLocation.shopAddress;
+      $("#shop-maps-url").value = shopLocation.shopMapsUrl;
+      $("#shop-location-section").hidden = role !== "owner";
       if (role === "owner") $("#shop-branding").hidden = false;
     }
     $("#scan").disabled = false;
@@ -747,7 +767,7 @@ window.addEventListener("pagehide", () => { controls?.stop(); staffSession = und
     }
     if (scanStamping) {
       $("#scan").textContent = "Start QR scanner";
-      $("#scan-help").textContent = "Scan a card or use manual lookup. Verify the paid purchase, then choose Record qualifying purchase. Repeat requests are protected against duplicate credit.";
+      $("#scan-help").textContent = "Each scan adds one stamp immediately. Scan the customer card again for another stamp. Manual lookup never adds stamps. Retried requests cannot add duplicate credit.";
     }
     if (role === "owner") {
       if (me.accountsEnabled) $("#accounts-section").hidden = false;
@@ -760,7 +780,14 @@ window.addEventListener("pagehide", () => { controls?.stop(); staffSession = und
     }
     $("#identity").textContent = `${me.username} · ${me.businessRole || me.role}`;
     await search();
-    for(const button of document.querySelectorAll("[data-tab]")) button.textContent = sectionNames[button.dataset.tab];
+    const icons = {overview:"M3 3h7v7H3z M14 3h7v7h-7z M3 14h7v7H3z M14 14h7v7h-7z",customers:"M3 8h18v4H3z M5 12v9h14v-9 M12 8v13 M12 8C6 8 5 2 8 2c3 0 4 6 4 6s1-6 4-6c3 0 2 6-4 6",scan:"M8 3H3v5 M16 3h5v5 M3 16v5h5 M21 16v5h-5 M5 12h14",design:"M3 5h18v14H3z M3 10h18 M7 15h3",referrals:"M16 8a4 4 0 1 0-8 0 4 4 0 0 0 8 0 M4 21v-2c0-4 16-4 16 0v2 M18 3l3 3-3 3",team:"M15 7a3 3 0 1 0-6 0 3 3 0 0 0 6 0 M3 21v-3c0-4 18-4 18 0v3 M3 5v6 M0 8h6",reports:"M4 3v18h17 M9 16v-5 M14 16V7 M19 16v-8"};
+    for(const button of document.querySelectorAll("[data-tab]")) {
+      button.textContent=sectionNames[button.dataset.tab];
+      const svg=document.createElementNS("http://www.w3.org/2000/svg","svg");svg.setAttribute("viewBox","0 0 24 24");svg.setAttribute("aria-hidden","true");svg.classList.add("nav-icon");
+      const path=document.createElementNS(svg.namespaceURI,"path");path.setAttribute("d",icons[button.dataset.tab]||icons.overview);svg.append(path);button.prepend(svg);
+    }
+    $("#workspace-date").textContent = new Intl.DateTimeFormat(undefined,{weekday:"long",day:"numeric",month:"long",timeZone:displayTimezone}).format(new Date());
+
     configureNavigation();
     showTab(location.hash.slice(1));
   } catch (e) {

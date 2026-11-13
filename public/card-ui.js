@@ -17,6 +17,7 @@
   }
   function render(container, member, { compact = false, preview = false } = {}) {
     const existingQR = container.querySelector(".qr");
+    const codeVisible = container.querySelector(".member-code")?.hidden === false;
     container.replaceChildren();
     container.className = "card" + (compact ? " wallet-card" : "") + (member.cardStyle === "minimal" ? " card-minimal" : "");
     theme(container, member.shopColor);
@@ -29,30 +30,52 @@
     label.append(brand, element("span", member.cardTitle || "Member card"));
     container.append(label);
     const name = element("h2", member.name, "member-name");
-    const progress = element("h2", `${member.stamps} / ${member.stampGoal} stamps`, "member-progress");
+    const progress = element("h2", compact ? `${member.stamps} of ${member.stampGoal} stamps` : `${member.stamps} / ${member.stampGoal} stamps`, "member-progress");
     const rewards = element("p", `${member.rewards} × ${member.rewardLabel || "Free coffee"} available`, "member-rewards");
     if (!compact && !preview) { name.id = "card-name"; name.tabIndex = -1; progress.id = "card-progress"; rewards.id = "card-rewards"; }
     container.append(name, progress, rewards);
-    const stamps = element("div", undefined, "stamp-grid");
-    if (!compact && !preview) stamps.id = "card-stamps";
-    const goal = Math.max(2, Math.min(100, Number(member.stampGoal) || 8));
-    if (compact || goal > 12) {
-      stamps.classList.add("proportional-progress");
-      const bar=document.createElement("progress");bar.max=goal;bar.value=Math.min(goal,Math.max(0,Number(member.stamps)||0));bar.setAttribute("aria-label",`${member.stamps} of ${goal} stamps`);
-      stamps.append(bar);
-    } else {
-      stamps.setAttribute("aria-hidden", "true");
-      stamps.style.setProperty("--stamp-columns", String(Math.min(goal, 4)));
-      for (let i = 0; i < goal; i++) stamps.append(element("span", i < member.stamps ? (icons[member.stampIcon] || icons.check) : String(i + 1), "stamp" + (i < member.stamps ? " filled" : "")));
+    if (member.shopAddress) container.append(element("p",member.shopAddress,"member-location"));
+    if (!compact && member.shopMapsUrl) {
+      try {
+        const url=new URL(member.shopMapsUrl);
+        if(url.protocol==="https:" && !url.username && !url.password && !url.port &&
+          ((["google.com","www.google.com"].includes(url.hostname) && /^\/maps(?:\/|$)/.test(url.pathname)) || ["maps.google.com","maps.app.goo.gl"].includes(url.hostname) || (url.hostname==="goo.gl" && url.pathname.startsWith("/maps/")))) {
+          const link=element("a","Open in Google Maps ↗","card-map-link");link.href=url.href;link.target="_blank";link.rel="noopener noreferrer";container.append(link);
+        }
+      } catch {}
     }
-    container.append(stamps);
+    if (!compact) {
+      const stamps = element("div", undefined, "stamp-grid");
+      if (!compact && !preview) stamps.id = "card-stamps";
+      const goal = Math.max(2, Math.min(100, Number(member.stampGoal) || 8));
+      if (goal > 12) {
+        stamps.classList.add("proportional-progress");
+        const bar=document.createElement("progress");bar.max=goal;bar.value=Math.min(goal,Math.max(0,Number(member.stamps)||0));bar.setAttribute("aria-label",`${member.stamps} of ${goal} stamps`);
+        stamps.append(bar);
+      } else {
+        stamps.setAttribute("aria-hidden", "true");
+        stamps.style.setProperty("--stamp-columns", String(Math.min(goal, 4)));
+        for (let i = 0; i < goal; i++) stamps.append(element("span", i < member.stamps ? (icons[member.stampIcon] || icons.check) : String(i + 1), "stamp" + (i < member.stamps ? " filled" : "")));
+      }
+      container.append(stamps);
+      if (goal <= 12) {
+        const meter=element("progress",undefined,"card-detail-meter");meter.max=goal;meter.value=Math.min(goal,Math.max(0,Number(member.stamps)||0));meter.setAttribute("aria-label",`${member.stamps} of ${goal} stamps toward the next reward`);container.append(meter);
+      }
+    }
     if (!compact) {
       if (!preview) {
         const source = `/api/members/${encodeURIComponent(member.id)}/qr`;
-        const qr = existingQR?.getAttribute("src") === source ? existingQR : element("img"); if(qr.getAttribute("src")!==source)qr.src = source; qr.alt = "Membership QR for staff"; qr.width = 240; qr.height = 240; qr.className = "qr"; container.append(qr);
+        const qr = existingQR?.getAttribute("src") === source ? existingQR : element("img"); if(qr.getAttribute("src")!==source)qr.src = source; qr.alt = "Membership QR for staff"; qr.width = 240; qr.height = 240; qr.className = "qr";
+        const identity=element("div",undefined,"card-identity");
+        const switches=element("div",undefined,"identity-switches");switches.setAttribute("role","group");switches.setAttribute("aria-label","Membership display");
+        const qrButton=element("button","Show QR","secondary"),codeButton=element("button","Member code","secondary"),code=element("code",member.membershipCode || member.id,"member-code");
+        qrButton.type=codeButton.type="button";
+        const setMode=showCode=>{qr.hidden=showCode;code.hidden=!showCode;qrButton.setAttribute("aria-pressed",String(!showCode));codeButton.setAttribute("aria-pressed",String(showCode));};
+        qrButton.onclick=()=>setMode(false);codeButton.onclick=()=>setMode(true);setMode(codeVisible);
+        switches.append(qrButton,codeButton);identity.append(switches,qr,code);container.append(identity);
       } else container.append(element("div", "Customer QR appears here", "preview-qr"));
-      container.append(element("small", preview ? member.tagline || "Sample web card" : "Show this QR to staff. Purchases and redemption require their confirmation.", "card-tagline"));
-    } else container.append(element("span", "Open card ↗", "wallet-card-open"));
+      container.append(element("small", preview ? member.tagline || "Sample web card" : "Show this QR to staff. Each scan adds one stamp. Reward redemption requires staff confirmation.", "card-tagline"));
+    } else container.append(element("span", "Open card", "wallet-card-open"));
   }
   function savedCards() {
     try {

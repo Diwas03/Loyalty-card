@@ -1,4 +1,6 @@
-import { cardDesign, validLogo } from "./card-design.js";
+import { externalDeliveryAllowed } from "./environment-safety.js";
+import { randomUUID } from "node:crypto";
+import { cardDesign, validLogo, validShopMapsUrl } from "./card-design.js";
 import { staffToken } from "./staff-session.js";
 import { teamRoutes } from "./team-routes.js";
 import { rememberWorkspace, forgetWorkspace, workspaceToken } from "./session-recovery.js";
@@ -36,6 +38,11 @@ export function createHostedApp(
       },
     }),
   );
+  app.use((_req, res, next) => {
+    res.locals.requestId = randomUUID();
+    res.set("X-Request-ID", res.locals.requestId);
+    next();
+  });
   app.use(express.json({ limit: "256kb" }));
   app.use(cookieParser());
   app.use((_req, res, next) => {
@@ -93,6 +100,10 @@ export function createHostedApp(
         res.status(401).json({ error: "Staff sign-in required" });
         return;
       }
+      if (row.username !== "legacy" && !["/api/staff/workspaces", "/api/staff/workspace", "/api/logout"].includes(req.path)) {
+        try { await db.query("SELECT coffee.assert_location($1,$2,$3)", [row.username,row.shop_id,row.location_id]); }
+        catch { res.status(403).json({ error: "Location access denied. Choose an assigned active workspace." }); return; }
+      }
       res.locals.actor = row.username;
       res.locals.shopId = row.shop_id;
       res.locals.locationId = row.location_id;
@@ -103,6 +114,10 @@ export function createHostedApp(
       next(e);
     }
   };
+  app.use("/api/staff", async (req,res,next) => {
+    if (!(await allowed(req,"staff-sensitive",180,60000))) { res.status(429).json({error:"Too many requests. Try again shortly."}); return; }
+    next();
+  });
   teamRoutes(app,db,staff);
   async function allowed(
     req: express.Request,
@@ -132,11 +147,17 @@ export function createHostedApp(
         res.status(400).json({ error: "Enter a shop name of 1–80 characters." });
         return;
       }
-      const result = first
-        ? await db.query("SELECT coffee.register_shop($1,$2,$3,$4) AS account", [username, passwordHash(req.body.password), fullName, shopName])
+      const inviteMode = process.env.PILOT_ONBOARDING_MODE;
+      if (first && inviteMode && !["open", "invite"].includes(inviteMode)) { res.status(503).json({ error: "Merchant onboarding is unavailable." }); return; }
+      const invite = typeof req.body.inviteToken === "string" ? req.body.inviteToken : "";
+      if (first && inviteMode === "invite" && !/^[a-f0-9]{64}$/.test(invite)) { res.status(403).json({ error: "A valid pilot merchant invitation is required." }); return; }
+      const result = first && inviteMode === "invite"
+        ? await db.query("SELECT coffee.register_invited_shop($1,$2,$3,$4,$5) AS account", [username,passwordHash(req.body.password),fullName,shopName,digest(invite)])
+        : first ? await db.query("SELECT coffee.register_shop($1,$2,$3,$4) AS account", [username, passwordHash(req.body.password), fullName, shopName])
         : await db.query("SELECT coffee.register_shop_staff($1,$2,$3,$4) AS account", [username, passwordHash(req.body.password), fullName, res.locals.shopId]);
       res.status(201).json(result.rows[0].account);
     } catch (error) {
+      if ((error as Error).message === "Merchant invitation unavailable") { res.status(403).json({ error: "Merchant invitation is expired or already used." }); return; }
       if ((error as { code?: string }).code === "23505") {
         res.status(409).json({ error: "That username is already in use. Choose another or sign in." });
         return;
@@ -227,7 +248,9 @@ export function createHostedApp(
     req.headers.authorization = "Bearer " + workspaceToken(req);
     next();
   }, staff, (req, res) => res.json({ token: staffToken(req) }));
-  app.delete("/api/staff/session", (_req, res) => {
+  app.delete("/api/staff/session", async (req, res) => {
+    const token = workspaceToken(req);
+    if (token) await db.query("DELETE FROM coffee.sessions WHERE token_hash=$1", [digest(token)]);
     forgetWorkspace(res);
     res.json({ ok: true });
   });
@@ -238,7 +261,15 @@ export function createHostedApp(
     await db.query("DELETE FROM coffee.sessions WHERE token_hash=$1", [
       digest(staffToken(req)),
     ]);
+    forgetWorkspace(res);
     res.clearCookie("staff", cookie).json({ ok: true });
+  });
+  app.get("/api/ops/alert-test", (req,res) => {
+    const expected=process.env.STAGING_ALERT_TEST_TOKEN || "", actual=req.get("Authorization") || "";
+    const token="Bearer "+expected;
+    if (process.env.APP_ENV!=="staging" || process.env.VERCEL_ENV==="production" || expected.length<32 || actual.length!==token.length || !timingSafeEqual(Buffer.from(actual),Buffer.from(token))) {res.sendStatus(404);return;}
+    console.error(JSON.stringify({event:"staging_alert_drill",requestId:res.locals.requestId,category:"intentional_503"}));
+    res.status(503).json({error:"Intentional staging alert drill",requestId:res.locals.requestId});
   });
   app.get("/healthz", async (_req, res) => {
     await db.query("SELECT stamp_goal FROM coffee.programme WHERE id=1");
@@ -262,7 +293,12 @@ export function createHostedApp(
   const shopId = (value: unknown) => typeof value === "string" && value ? value : "default";
   const shopToken = (token: string, shop: string) => digest(shop === "default" ? token : token + ":" + shop);
   async function shopInfo(id: string) {
-    return (await db.query("SELECT id,name,color,stamp_goal,card_title,tagline,reward_label,stamp_icon,card_style,logo_data,currency,timezone,country,reward_expiry_days FROM coffee.shops WHERE id=$1", [id])).rows[0];
+    return (await db.query("SELECT id,name,color,stamp_goal,card_title,tagline,reward_label,stamp_icon,card_style,logo_data,shop_address,shop_maps_url,currency,timezone,country,reward_expiry_days FROM coffee.shops WHERE id=$1", [id])).rows[0];
+  }
+  async function shopMember(id: string, shop: string) {
+    // Authorize before readMember, which legitimately expires vouchers.
+    if (!(await db.query("SELECT 1 FROM coffee.members WHERE id=$1 AND shop_id=$2", [id,shop])).rowCount) return undefined;
+    return readMember(db,id);
   }
   async function privateMember(token: string) {
     const found = (await db.query("SELECT id FROM coffee.members WHERE card_token=$1", [token])).rows[0];
@@ -273,26 +309,25 @@ export function createHostedApp(
     const m = await privateMember(String(req.params.id));
     if (!m) { res.status(404).json({ error: "Card not found" }); return; }
     const token = randomBytes(32).toString("hex");
-    await db.query("INSERT INTO coffee.card_transfers VALUES($1,$2,$3) ON CONFLICT(member_id) DO UPDATE SET token_hash=excluded.token_hash,expires=excluded.expires", [m.id,digest(token),Date.now()+600000]);
+    const created=(await db.query("SELECT coffee.create_transfer($1,$2) AS created", [String(req.params.id),digest(token)])).rows[0].created;
+    if (!created) { res.status(404).json({error:"Card not found"}); return; }
     res.json({ transferUrl: "/recover.html#" + token, expiresIn: 600 });
   });
   app.post("/api/recover", async (req, res) => {
     if (!(await allowed(req, "card-recover", 10, 60000))) { res.status(429).json({ error: "Too many attempts. Try again in a minute." }); return; }
     if (typeof req.body.token !== "string" || !/^[a-f0-9]{64}$/.test(req.body.token)) { res.status(400).json({ error: "Invalid transfer link" }); return; }
-    const transfer = (await db.query("DELETE FROM coffee.card_transfers WHERE token_hash=$1 AND expires>$2 RETURNING member_id", [digest(req.body.token),Date.now()])).rows[0];
-    if (!transfer) { res.status(410).json({ error: "This transfer link expired or was already used. Create a new link from your original card." }); return; }
-    const m = await readMember(db,transfer.member_id);
     const browserToken=validJoinToken(req.cookies.coffee_customer) ? req.cookies.coffee_customer : randomBytes(32).toString("hex");
-    await db.query("INSERT INTO coffee.customer_enrollments(token_hash,member_id,created_at) VALUES($1,$2,$3) ON CONFLICT DO NOTHING",[shopToken(browserToken,m.shop_id),m.id,Date.now()]);
-    res.cookie("coffee_customer",browserToken,{...cookie,maxAge:365*24*3600000});
-    res.json({ customerUrl: "/?member=" + encodeURIComponent(m.card_token || m.id) });
+    try {
+      const recovered=(await db.query("SELECT coffee.consume_transfer($1,$2) AS recovery",[digest(req.body.token),browserToken])).rows[0].recovery;
+      res.cookie("coffee_customer",browserToken,{...cookie,maxAge:365*24*3600000});
+      res.json({ customerUrl: "/?member=" + encodeURIComponent(recovered.cardToken) });
+    } catch (error) {
+      const conflict=(error as Error).message === "This browser already has another membership at this shop";
+      res.status(conflict ? 409 : 410).json({error: conflict ? "This browser already has another card for this shop. Use a separate browser; your transfer link has not been consumed." : "This transfer link expired or was already used. Create a new link from your original card."});
+    }
   });
-  app.post("/api/staff/members/:id/rotate-link", staff, async (req, res) => {
-    if (res.locals.role !== "owner") { res.status(403).json({ error: "Owner access required" }); return; }
-    if (req.body.confirm !== true) { res.status(400).json({ error: "Confirm invalidating the previous private link" }); return; }
-    const token = (await db.query("WITH changed AS (UPDATE coffee.members SET card_token=gen_random_uuid()::text WHERE id=$1 AND shop_id=$2 RETURNING id,card_token), revoked AS (DELETE FROM coffee.card_transfers t USING changed c WHERE t.member_id=c.id) SELECT card_token FROM changed", [String(req.params.id),res.locals.shopId])).rows[0]?.card_token;
-    if (!token) { res.status(404).json({ error: "Membership not found" }); return; }
-    res.json({ customerUrl: "/?member=" + token });
+  app.post("/api/staff/members/:id/rotate-link", staff, (_req, res) => {
+    res.status(410).json({ error: "Private customer card links are no longer available through staff accounts." });
   });
   app.get("/api/shop", async (req, res) => {
     const shop = await shopInfo(shopId(req.query.shop));
@@ -331,7 +366,7 @@ export function createHostedApp(
       res.status(400).json({ error: "Provide a whole stamp adjustment, reason, confirmation and request key" }); return;
     }
     try {
-      const result = await db.query("SELECT coffee.adjust_progress($1,$2,$3,$4,$5,$6) AS result", [res.locals.shopId, String(req.params.id), req.body.delta, req.body.reason, key, res.locals.actor]);
+      const result = await db.query("SELECT coffee.staff_adjust($1,$2,$3,$4,$5,$6,$7) AS result", [res.locals.shopId, String(req.params.id), req.body.delta, req.body.reason, key, res.locals.actor, res.locals.locationId]);
       res.json(result.rows[0].result);
     } catch { res.status(409).json({ error: "Adjustment rejected. Check membership, reason, progress bounds and request key." }); }
   });
@@ -349,9 +384,19 @@ export function createHostedApp(
   });
   app.get("/api/staff/customers.csv", staff, async (_req, res) => {
     if (res.locals.role !== "owner") { res.status(403).json({ error: "Owner access required" }); return; }
+    await db.query("SELECT coffee.expire_member_rewards(id) FROM coffee.members WHERE shop_id=$1",[res.locals.shopId]);
     const rows = (await db.query("SELECT id,name,stamps,rewards FROM coffee.members WHERE shop_id=$1 ORDER BY id", [res.locals.shopId])).rows;
-    const cell = (value: unknown) => '"' + String(value).replace(/^[=+@\-\t\r]/, "'$&").replaceAll('"', '""') + '"';
+    const cell = (value: unknown) => '"' + String(value).replace(/^(?=[\s]*[=+@\-]|[\t\r\n])/, "'").replaceAll('"', '""') + '"';
     res.type("text/csv").attachment("customers.csv").send(["id,name,stamps,rewards", ...rows.map(row => [row.id,row.name,row.stamps,row.rewards].map(cell).join(","))].join("\r\n"));
+  });
+  app.post("/api/staff/shop-location", staff, async (req, res) => {
+    if (res.locals.role !== "owner") { res.status(403).json({ error: "Owner access required" }); return; }
+    const { address, mapsUrl } = req.body;
+    if (typeof address!=="string" || address.trim().length>240 || typeof mapsUrl!=="string" || mapsUrl.trim().length>1500 || !validShopMapsUrl(mapsUrl.trim())) {
+      res.status(400).json({ error: "Enter an address up to 240 characters and an optional HTTPS Google Maps place/share link." }); return;
+    }
+    await db.query("UPDATE coffee.shops SET shop_address=$1,shop_maps_url=$2 WHERE id=$3",[address.trim(),mapsUrl.trim(),res.locals.shopId]);
+    res.json({shopAddress:address.trim(),shopMapsUrl:mapsUrl.trim()});
   });
   app.post("/api/staff/shop", staff, async (req, res) => {
     if (res.locals.role !== "owner") { res.status(403).json({ error: "Owner access required" }); return; }
@@ -395,6 +440,7 @@ export function createHostedApp(
   app.get("/api/staff/overview", staff, async (_req, res) => {
     if (res.locals.role !== "owner") { res.status(403).json({ error: "Owner access required" }); return; }
     const shop = res.locals.shopId, now = Date.now();
+    await db.query("SELECT coffee.expire_member_rewards(id) FROM coffee.members WHERE shop_id=$1",[shop]);
     const metrics = (await db.query(`SELECT
       (SELECT count(*)::int FROM coffee.members WHERE shop_id=$1) AS customers,
       (SELECT count(DISTINCT o.member_id)::int FROM coffee.operations o JOIN coffee.members m ON m.id=o.member_id WHERE m.shop_id=$1 AND o.kind='purchase' AND o.created_at>=$2) AS active_customers,
@@ -498,6 +544,13 @@ export function createHostedApp(
         await QRCode.toBuffer(m.id, { width: 320, margin: 3 }),
       );
   });
+  app.get("/api/staff/rewards", staff, async (req, res) => {
+    const after = typeof req.query.after === "string" ? req.query.after : "";
+    if (after && !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(after)) { res.status(400).json({ error: "Invalid reward list cursor" }); return; }
+    await db.query("SELECT coffee.expire_member_rewards(id) FROM coffee.members WHERE shop_id=$1 AND rewards>0", [res.locals.shopId]);
+    const rows = (await db.query('SELECT m.id,m.name,m.stamps,m.rewards,p.stamp_goal AS "stampGoal" FROM coffee.members m JOIN coffee.shops p ON p.id=m.shop_id WHERE m.shop_id=$1 AND m.rewards>0 AND m.id>$2 ORDER BY m.id LIMIT 51', [res.locals.shopId, after])).rows;
+    res.json({ customers: rows.slice(0,50), nextCursor: rows.length>50 ? rows[49].id : null });
+  });
   app.get("/api/staff/members", staff, async (req, res) => {
     const q = String(req.query.q || "").slice(0, 80);
     res.json(
@@ -514,7 +567,7 @@ export function createHostedApp(
   });
   app.get("/api/staff/members/:id", staff, async (req, res) => {
     const id = String(req.params.id),
-      m = await readMember(db, id);
+      m = await shopMember(id, res.locals.shopId);
     if (!m || m.shop_id !== res.locals.shopId) {
       res.status(404).json({ error: "Membership not found" });
       return;
@@ -532,15 +585,13 @@ export function createHostedApp(
     res.json({
       ...publicMember(m),
       id: m.id,
-      privateCardToken: m.card_token,
       history: history.rows,
       deliveries: deliveries.rows,
     });
   });
   app.post("/api/staff/members/:id/scan", staff, async (req, res, next) => {
-    if (req.body.confirm !== true) { res.status(400).json({ error: "Confirm a paid qualifying purchase before recording credit" }); return; }
     const id = String(req.params.id), key = req.get("Idempotency-Key");
-    const member = await readMember(db, id);
+    const member = await shopMember(id, res.locals.shopId);
     if (!member || member.shop_id !== res.locals.shopId) { res.status(404).json({ error: "Invalid QR code. Please show a valid customer membership QR for this shop." }); return; }
     if (!key || !/^[a-zA-Z0-9-]{16,100}$/.test(key)) {
       res.status(400).json({ error: "A valid scan request key is required" });
@@ -565,7 +616,7 @@ export function createHostedApp(
     const action = String(req.params.action),
       id = String(req.params.id),
       key = req.get("Idempotency-Key");
-    const member = await readMember(db, id);
+    const member = await shopMember(id, res.locals.shopId);
     if (!member || member.shop_id !== res.locals.shopId) { res.status(404).json({ error: "Membership not found" }); return; }
     if (action === "purchase") { res.status(410).json({ error: "Manual stamping has been removed. Scan the customer’s QR code to award a stamp." }); return; }
     if (
@@ -660,7 +711,7 @@ export function createHostedApp(
     background(deliverHosted(db, j.member_id));
   });
   app.get("/wallet/google/:id", async (req, res) => {
-    if (!readiness().google.enabled) {
+    if (!externalDeliveryAllowed() || !readiness().google.enabled) {
       res
         .status(503)
         .send("Google Wallet is not configured. Use your browser card.");
@@ -728,8 +779,10 @@ export function createHostedApp(
       res: express.Response,
       _next: express.NextFunction,
     ) => {
+      console.error(JSON.stringify({ event: "request_failed", requestId: res.locals.requestId, category: "server_error" }));
       const status = (err as Error & { status?: number }).status;
       res.status(status === 400 || status === 413 ? status : 503).json({
+        requestId: res.locals.requestId,
         error:
           status === 400
             ? "Invalid JSON request"

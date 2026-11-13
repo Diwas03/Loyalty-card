@@ -1,3 +1,4 @@
+import { externalDeliveryAllowed } from "./environment-safety.js";
 import type { DB } from "./db.js";
 import { member } from "./db.js";
 import { readiness } from "./config.js";
@@ -76,7 +77,7 @@ export async function runOne(
         return true;
       }
 
-      if (!readiness()[provider as "google" | "apple"].enabled) {
+      if (!externalDeliveryAllowed() || !readiness()[provider as "google" | "apple"].enabled) {
         await db.query(
           "UPDATE jobs SET status = 'blocked', error = $1, next_at = $2 WHERE id = $3",
           [

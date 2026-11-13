@@ -26,6 +26,7 @@ const safe = (a: string, b: string) => {
 };
 const publicMember = (m: Member) => ({
   id: m.id,
+  membershipCode: m.id,
   name: m.name,
   stamps: m.stamps,
   rewards: m.rewards,
@@ -399,6 +400,12 @@ export function createApp(db: DB) {
     res.json({ username: res.locals.actor, role: res.locals.role, scanStamping: true }),
   );
 
+  app.get("/api/staff/rewards", staff, async (req, res) => {
+    const after = typeof req.query.after === "string" ? req.query.after : "";
+    if (after && !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(after)) { res.status(400).json({ error: "Invalid reward list cursor" }); return; }
+    const rows = (await db.query('SELECT m.id,m.name,m.stamps,m.rewards,p.stamp_goal AS "stampGoal" FROM members m JOIN programme p ON p.id=1 WHERE m.rewards>0 AND m.id>$1 ORDER BY m.id LIMIT 51', [after])).rows;
+    res.json({ customers: rows.slice(0,50), nextCursor: rows.length>50 ? rows[49].id : null });
+  });
   app.get("/api/staff/members", staff, async (req, res, next) => {
     try {
       const q = String(req.query.q || "").slice(0, 80);
@@ -474,7 +481,6 @@ export function createApp(db: DB) {
   });
 
   app.post("/api/staff/members/:id/scan", staff, async (req, res, next) => {
-    if (req.body.confirm !== true) { res.status(400).json({ error: "Confirm a paid qualifying purchase before recording credit" }); return; }
     const id = String(req.params.id), key = req.get("Idempotency-Key");
     if (!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(id) || !(await member(db, id))) {
       res.status(404).json({ error: "Invalid QR code. Please show a valid customer membership QR for this shop." }); return;

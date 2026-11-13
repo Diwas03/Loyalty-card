@@ -1,10 +1,11 @@
+import { requireLocalDatabase } from "../src/environment-safety.js";
 import "dotenv/config";
 import { Pool } from "pg";
 import { initializeHosted } from "../src/hosted-runtime.js";
 import { passwordHash } from "../src/auth.js";
 
 // An explicit, separate loopback database only. Never falls back to DATABASE_URL.
-const url = new URL(process.env.DEV_DATABASE_URL || "http://invalid");
+const url = requireLocalDatabase(process.env.DEV_DATABASE_URL,"Local pilot development");
 if (!["postgres:","postgresql:"].includes(url.protocol) || !["127.0.0.1","localhost"].includes(url.hostname) || url.pathname !== "/coffee_dev")
   throw Error("Set DEV_DATABASE_URL to a disposable loopback /coffee_dev database. Production URLs are refused.");
 const password = process.env.DEV_SEED_PASSWORD || "";

@@ -57,9 +57,8 @@ try {
       test.scanTestFrame();
     }, scanId);
     await page.waitForFunction(() => !(document.querySelector("#scan") as HTMLButtonElement).disabled);
-    if ((await page.locator("#message").textContent())?.startsWith("Card identified")) await page.locator("#purchase").click();
   };
-  assert.equal(await page.locator("#purchase").count(), 1);
+  assert.equal(await page.locator("#purchase").count(), 0);
   await scan("https://example.com/not-a-customer-card");
   await page.getByText("Invalid QR code. Please show a valid customer membership QR for Demo Coffee Shop.", { exact: true }).first().waitFor();
   assert.equal(Number((await db.query("SELECT stamps FROM coffee.members WHERE id=$1", [member.id])).rows[0].stamps), 0);
@@ -67,9 +66,7 @@ try {
   await page.waitForFunction(() => document.querySelector("#customer-outcome")?.textContent?.startsWith("One stamp added"));
   assert.equal(Number((await db.query("SELECT stamps FROM coffee.members WHERE id=$1", [member.id])).rows[0].stamps), 1);
   await scan();
-  await page.waitForFunction(() => document.querySelector("#customer-outcome")?.textContent?.includes("No extra stamp"));
-  assert.equal(Number((await db.query("SELECT stamps FROM coffee.members WHERE id=$1", [member.id])).rows[0].stamps), 1);
-  await db.query("UPDATE coffee.scan_requests SET created_at=created_at-6000");
+  assert.equal(Number((await db.query("SELECT stamps FROM coffee.members WHERE id=$1", [member.id])).rows[0].stamps), 2);
   let loseResponse = true;
   await page.route("**/api/staff/members/*/scan", async route => {
     if (loseResponse) { loseResponse = false; await route.fetch(); await route.abort("failed"); }
@@ -81,8 +78,9 @@ try {
   await page.locator("#identity").filter({hasText:"scanner"}).waitFor();
   await scan();
   await page.waitForFunction(() => document.querySelector("#customer-outcome")?.textContent?.startsWith("One stamp added"));
-  assert.equal(Number((await db.query("SELECT stamps FROM coffee.members WHERE id=$1", [member.id])).rows[0].stamps), 2);
+  assert.equal(Number((await db.query("SELECT stamps FROM coffee.members WHERE id=$1", [member.id])).rows[0].stamps), 3);
   assert.equal(await page.evaluate(() => sessionStorage.getItem("coffeePending")), null);
+  assert.equal(dialogs, 0);
   await page.locator("#logout").click();
   await page.waitForURL("**/business/login.html");
   await page.goto(origin + "/business/register.html");
@@ -95,7 +93,7 @@ try {
   await page.waitForURL("**/business/dashboard.html*");
   await scan(member.id);
   await page.getByText("Invalid QR code. Please show a valid customer membership QR for Browser Roasters.", { exact: true }).first().waitFor();
-  assert.equal(Number((await db.query("SELECT stamps FROM coffee.members WHERE id=$1", [member.id])).rows[0].stamps), 2);
+  assert.equal(Number((await db.query("SELECT stamps FROM coffee.members WHERE id=$1", [member.id])).rows[0].stamps), 3);
   await page.locator("#tab-design").click();
   await page.locator("#shop-branding").waitFor({ state: "visible" });
   const me = await (await page.request.get(origin + "/api/staff/me", { headers: { Authorization: "Bearer " + lastLoginToken! } })).json();
@@ -176,9 +174,9 @@ try {
   await page.goto(origin + "/business/dashboard.html");
   await page.locator("#identity").filter({hasText:"browser-owner"}).waitFor();
   await customer.close();
-  assert.ok(dialogs > 0);
+  assert.equal(dialogs, 0);
   assert.deepEqual(errors, []);
-  console.log("Browser flows passed: invalid/wrong-shop QR rejection, confirmed stamping and retry safety, refresh-safe staff sessions, owner card design with logo, referral sharing/first-purchase rewards, dashboard monitoring, and a two-shop customer wallet. Purchase confirmations and no browser exceptions.");
+  console.log("Browser flows passed: invalid/wrong-shop QR rejection, instant stamping and retry safety, refresh-safe staff sessions, owner card design with logo, referral sharing/first-purchase rewards, dashboard monitoring, and a two-shop customer wallet. No purchase confirmations and no browser exceptions.");
 } finally {
   await browser?.close();
   await new Promise<void>(resolve => server.close(() => resolve()));

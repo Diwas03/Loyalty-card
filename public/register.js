@@ -1,3 +1,6 @@
+// Optional pilot invitation stays in the URL fragment, never in access-log URLs.
+const invitation = new URLSearchParams(location.hash.slice(1)).get("invite") || "";
+if (invitation) history.replaceState(null,"",location.pathname+location.search);
 document.querySelector("#register").onsubmit = async (event) => {
   event.preventDefault();
   const form = event.currentTarget;
@@ -15,7 +18,7 @@ document.querySelector("#register").onsubmit = async (event) => {
     const response = await fetch("/api/setup/owner", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ fullName: data.fullName, username: data.username, password: data.password, shopName: data.shopName }),
+      body: JSON.stringify({ fullName: data.fullName, username: data.username, password: data.password, shopName: data.shopName, ...(/^[a-f0-9]{64}$/.test(invitation) ? {inviteToken: invitation} : {}) }),
     });
     const result = await response.json();
     if (!response.ok) throw Error(result.error || "Could not create the account. Please try again.");

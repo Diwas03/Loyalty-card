@@ -1,9 +1,11 @@
+import { requireLocalOperator } from "../src/environment-safety.js";
 import "dotenv/config";
 import { openDb } from "../src/db.js";
 
 const username = process.argv[2]?.toLowerCase();
 if (!username) throw new Error("Usage: npm run staff-disable -- username");
 
+requireLocalOperator("staff-disable.ts");
 const db = openDb();
 try {
   const { rows: accRows } = await db.query(
