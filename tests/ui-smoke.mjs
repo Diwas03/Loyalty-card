@@ -17,6 +17,7 @@ app.get('/api/staff/overview', (_req, res) => res.json({ metrics: { customers: 4
 app.get('/api/staff/referrals', (_req, res) => res.json({ settings: { referrals_enabled: true, referral_reward_kind: 'stamps', referral_reward_amount: 1 }, referrals: [] }));
 app.get('/api/staff/shop' , (_req, res) => res.json(shop));
 app.get('/api/staff/programme', (_req, res) => res.json({ stampGoal: 8 }));
+app.get('/api/staff/rewards', (_req,res) => res.json({customers:[member],nextCursor:null}));
 app.get('/api/staff/members', (_req, res) => res.json([member, { ...member, id: '87654321-1234-1234-1234-123456789abc', name: 'Jordan Lee', stamps: 2, rewards: 0 }]));
 app.get('/api/staff/members/:id', (_req, res) => res.json(member));
 app.post('/api/login', async (_req, res) => { await new Promise(resolve => setTimeout(resolve, 250)); res.status(401).json({ error: 'Incorrect username or password.' }); });
@@ -41,7 +42,8 @@ try {
       if (name === "staff") await page.evaluate(() => sessionStorage.setItem("loyalty-staff-handoff", JSON.stringify({ token: "a".repeat(64), createdAt: Date.now() })));
       await page.goto(base + path);
       if (name === 'card') await page.locator('#card-progress').waitFor();
-      if (['home','card','join'].includes(name)) assert.equal(await page.locator('nav a[href*="login"]').count(), 0);
+      if (['home','card','join'].includes(name)) assert.equal(await page.locator('a[href^="/business"],a[href="/login.html"],a[href="/staff.html"]').count(), 0);
+      if (['business','login','register','staff'].includes(name)) assert.equal(await page.locator('a[href="/"],a[href^="/?member="],#customer-link,#customer-join-link').count(), 0);
       if (name === 'join') await page.waitForFunction(() => !document.querySelector('#submit').disabled);
       if (name === 'staff') await page.locator('#customers .customer-row').first().waitFor();
       if (name === 'staff') {

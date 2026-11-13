@@ -69,7 +69,7 @@ test("confirmed purchases and compensating corrections reconcile an immutable te
   } finally { await db.end(); }
 });
 
-test("private links rotate without changing balances; transfer links expire and consume exactly once", async () => {
+test("staff cannot retrieve private card links; customer transfers expire and consume exactly once", async () => {
   const db=await memDb();
   try {
     await initializeHosted(db); const app=createHostedApp(db);
@@ -84,12 +84,13 @@ test("private links rotate without changing balances; transfer links expire and 
     await db.query("UPDATE coffee.card_transfers SET expires=0");
     await request(app).post("/api/recover").send({token:expired}).expect(410);
     const outstanding=(await request(app).post(`/api/members/${m.id}/transfer`).send({}).expect(200)).body.transferUrl.split("#")[1];
-    const rotated=(await owner.post(`/api/staff/members/${m.id}/rotate-link`).send({confirm:true}).expect(200)).body.customerUrl.split("=")[1];
-    await request(app).get(`/api/members/${m.id}`).expect(404);
-    await request(app).get(`/api/members/${m.id}/qr`).expect(404);
-    assert.equal((await request(app).get(`/api/members/${rotated}`).expect(200)).body.stamps,0);
-    await request(app).get(`/api/members/${rotated}/qr`).expect(200);
-    await request(app).post("/api/recover").send({token:outstanding}).expect(410);
+    const details=(await owner.get(`/api/staff/members/${m.id}`).expect(200)).body;
+    assert.equal(Object.hasOwn(details,'privateCardToken'),false);
+    assert.equal(Object.hasOwn(details,'customerUrl'),false);
+    await owner.post(`/api/staff/members/${m.id}/rotate-link`).send({confirm:true}).expect(410);
+    assert.equal((await request(app).get(`/api/members/${m.id}`).expect(200)).body.stamps,0);
+    await request(app).get(`/api/members/${m.id}/qr`).expect(200);
+    await request(app).post("/api/recover").send({token:outstanding}).expect(200);
     await owner.post("/api/staff/region").send({currency:"BTN",country:"BT",timezone:"Asia/Thimphu"}).expect(200);
     await owner.post("/api/staff/region").send({currency:"BTN",country:"BT",timezone:"Invalid/zone"}).expect(400);
   } finally { await db.end(); }

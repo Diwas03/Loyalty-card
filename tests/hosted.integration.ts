@@ -312,6 +312,10 @@ test("authenticated QR scanning awards one stamp, deduplicates frames and retrie
   await db.query("INSERT INTO coffee.staff_accounts VALUES($1,$2,$3,true)", ["scanner", passwordHash("scanner-test-password"), "staff"]);
   const staff = request.agent(app);
   await staff.post("/api/login").send({ username: "scanner", password: "scanner-test-password" }).expect(200).then(response => { staff.set("Authorization", "Bearer " + response.body.token); });
+  const details=(await staff.get(`/api/staff/members/${m.id}`).expect(200)).body;
+  assert.equal(Object.hasOwn(details,"privateCardToken"),false);
+  assert.equal(Object.hasOwn(details,"customerUrl"),false);
+  await staff.post(`/api/staff/members/${m.id}/rotate-link`).send({confirm:true}).expect(410);
   await staff.post(`/api/staff/members/${m.id}/purchase`).set("Idempotency-Key", randomUUID()).send({ confirm: true }).expect(410);
   await staff.post(url).send({ confirm: true }).expect(400);
   await staff.post(url).set("Origin", "https://wrong.example").set("Idempotency-Key", randomUUID()).send({ confirm: true }).expect(403);
@@ -489,4 +493,64 @@ test("owner dashboard and referral settings stay inside their shop; reward payou
   await staff.get("/api/staff/overview").expect(403);
   await staff.get("/api/staff/referrals").expect(403);
   await staff.post("/api/staff/referrals").send({ enabled: false, rewardKind: "stamps", rewardAmount: 1 }).expect(403);
+});
+
+test("reward queue isolates shops, expires vouchers, paginates and removes confirmed redemptions", async () => {
+  delete process.env.PUBLIC_BASE_URL;
+  const app=createHostedApp(db);
+  await request(app).get('/api/staff/rewards').expect(401);
+  await db.query("INSERT INTO coffee.staff_accounts VALUES($1,$2,$3,true)", ['reward-cashier',passwordHash('reward-cashier-password'),'staff']);
+  const login=await request(app).post('/api/login').send({username:'reward-cashier',password:'reward-cashier-password'}).expect(200);
+  const staff=request.agent(app).set('Authorization','Bearer '+login.body.token);
+  const ready=await enroll(), empty=await enroll(), expired=await enroll();
+  await db.query("INSERT INTO coffee.shops(id,name,color,stamp_goal) VALUES('reward-other','Other Shop','#193d32',8)");
+  const other=(await db.query("SELECT coffee.enroll_customer('Other shop member',NULL,'reward-other') AS m")).rows[0].m;
+  for(const member of [ready,expired,other]) await db.query("SELECT coffee.mutate_member($1,'purchase',gen_random_uuid()::text,'reward-test') FROM generate_series(1,8)",[member.id]);
+  await db.query("UPDATE coffee.issued_rewards SET expires_at=$1 WHERE member_id IN ($2,$3)",[Date.now()-1000,expired.id,other.id]);
+  const first=(await staff.get('/api/staff/rewards').expect(200)).body;
+  assert.deepEqual(first.customers.map((m:any)=>m.id),[ready.id]);
+  assert.equal(first.nextCursor,null);
+  assert.equal((await readMember(db,expired.id)).rewards,0);
+  // Reading this shop's queue must not expire another shop's rewards.
+  assert.equal((await db.query('SELECT rewards FROM coffee.members WHERE id=$1',[other.id])).rows[0].rewards,1);
+  assert.ok(!first.customers.some((m:any)=>m.id===empty.id||m.id===other.id));
+  const url=`/api/staff/members/${ready.id}/redeem`, key=randomUUID();
+  await staff.post(url).set('Idempotency-Key',key).send({}).expect(400);
+  await Promise.all([1,2].map(()=>staff.post(url).set('Idempotency-Key',key).send({confirm:true}).expect(200)));
+  assert.equal((await staff.get('/api/staff/rewards').expect(200)).body.customers.length,0);
+  await staff.post(url).set('Idempotency-Key',randomUUID()).send({confirm:true}).expect(409);
+  await staff.get('/api/staff/rewards?after=bad-cursor').expect(400);
+  for(let i=0;i<51;i++) {
+    const m=await enroll();
+    await db.query("SELECT coffee.mutate_member($1,'purchase',gen_random_uuid()::text,'reward-test') FROM generate_series(1,8)",[m.id]);
+  }
+  const page1=(await staff.get('/api/staff/rewards').expect(200)).body;
+  const page2=(await staff.get('/api/staff/rewards?after='+page1.nextCursor).expect(200)).body;
+  assert.equal(page1.customers.length,50);assert.equal(page2.customers.length,1);assert.equal(page2.nextCursor,null);
+  assert.equal(new Set([...page1.customers,...page2.customers].map((m:any)=>m.id)).size,51);
+});
+
+test("only the owner publishes a validated shop address and Maps link on customer cards",async()=>{
+  delete process.env.PUBLIC_BASE_URL;
+  const app=createHostedApp(db);
+  await request(app).post('/api/setup/owner').send({username:'location-owner',fullName:'Location Owner',shopName:'Location Shop',password:'location-owner-password'}).expect(201);
+  const login=(await request(app).post('/api/login').send({username:'location-owner',password:'location-owner-password'}).expect(200)).body;
+  const owner=request.agent(app).set('Authorization','Bearer '+login.token);
+  await owner.post('/api/staff/accounts').send({username:'location-cashier',fullName:'Location Cashier',password:'location-cashier-password'}).expect(201);
+  const cashierLogin=(await request(app).post('/api/login').send({username:'location-cashier',password:'location-cashier-password'}).expect(200)).body;
+  const cashier=request.agent(app).set('Authorization','Bearer '+cashierLogin.token);
+  const m=await enroll();
+  const body={address:'Clock Tower Square, Thimphu',mapsUrl:'https://www.google.com/maps/search/?api=1&query=Clock+Tower+Thimphu'};
+  await request(app).post('/api/staff/shop-location').send(body).expect(401);
+  await cashier.post('/api/staff/shop-location').send(body).expect(403);
+  for(const mapsUrl of ['javascript:alert(1)','https://evil.example/maps','https://www.google.com.evil.example/maps','https://user@www.google.com/maps','https://www.google.com/url?url=https://evil.example']) await owner.post('/api/staff/shop-location').send({...body,mapsUrl}).expect(400);
+  await owner.post('/api/staff/shop-location').send({...body,address:'x'.repeat(241)}).expect(400);
+  await owner.post('/api/staff/shop-location').send(body).expect(200);
+  const card=(await request(app).get('/api/members/'+m.id).expect(200)).body;
+  assert.equal(card.shopAddress,body.address);assert.equal(card.shopMapsUrl,body.mapsUrl);
+  assert.equal((await owner.get('/api/staff/shop').expect(200)).body.shop_address,body.address);
+  await owner.post('/api/staff/shop-location').send({address:'',mapsUrl:'https://maps.app.goo.gl/ExamplePlace'}).expect(200);
+  await owner.post('/api/staff/shop-location').send({address:'Address only',mapsUrl:''}).expect(200);
+  assert.equal((await request(app).get('/api/members/'+m.id).expect(200)).body.shopAddress,'Address only');
+  await owner.post('/api/staff/shop-location').send({address:'',mapsUrl:''}).expect(200);
 });

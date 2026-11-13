@@ -28,6 +28,7 @@ const message = (t, error = false) => {
   $("#message").textContent = t;
   $("#message").dataset.tone = error ? "error" : "success";
 };
+let shopLocation = {shopAddress:"",shopMapsUrl:""};
 let currentShopName = "this shop", currentLocationName = "current location", selectedMember, savedGoal = 8, savedDesignSignature = "", displayTimezone = "Asia/Thimphu", lookupGeneration = 0;
 const outcome = (value, error = false) => {
   $("#customer-outcome").textContent = value;
@@ -82,7 +83,7 @@ function text(tag, value, className) {
 }
 let currentTab, dashboardEnabled = false;
 const availableTabs = new Set(["customers", "scan"]);
-const sectionNames = { overview: "Overview", customers: "Customers", scan: "Scan and lookup", design: "Programs & cards", referrals: "Referrals", team: "Team & locations", reports: "Reports" };
+const sectionNames = { overview: "Overview", customers: "Rewards", scan: "Scan and lookup", design: "Programs & cards", referrals: "Referrals", team: "Team & locations", reports: "Reports" };
 const narrowNavigation = matchMedia("(max-width: 900px)");
   $("#preview-disclosure").open = !narrowNavigation.matches;
 function configureNavigation() {
@@ -97,6 +98,7 @@ function focusCustomer() {
   $("#customer-name").focus({ preventScroll: false });
 }
 function showTab(key, focus = false) {
+  if (key === "rewards") key = "customers";
   if (!availableTabs.has(key)) key = role === "owner" && dashboardEnabled ? "overview" : "customers";
   if (currentTab === "scan" && key !== "scan") {
     ++scanGeneration; controls?.stop();
@@ -104,6 +106,7 @@ function showTab(key, focus = false) {
   }
   currentTab = key;
   $("#section-heading").textContent = sectionNames[key];
+  $("#section-description").textContent = ({overview:"Your latest shop activity, all in one place.",customers:"Recognise your regulars. Review available rewards and confirm each redemption.",scan:"One scan. One stamp. Keep your counter moving.",design:"Make your card feel like your shop. Publish your address, appearance and reward rules.",referrals:"See how your customers help your community grow.",team:"Give your team the access and work locations they need.",reports:"Understand recorded activity with clear, auditable numbers."})[key];
   $("#current-section").textContent = sectionNames[key];
   $(".quick-scan").hidden = key === "scan";
   for (const button of document.querySelectorAll("[data-tab]")) {
@@ -112,7 +115,8 @@ function showTab(key, focus = false) {
     $("#panel-" + button.dataset.tab).hidden = !active;
     if (active && focus) button.focus();
   }
-  history.replaceState(null, "", "#" + key);
+  history.replaceState(null, "", "#" + (key === "customers" ? "rewards" : key));
+  if (key === "customers") search().catch(error => message(error.message,true));
   if (key === "overview") loadOverview().catch(error => message(error.message));
   if (key === "referrals") loadReferrals().catch(error => message(error.message));
   if (key === "reports") loadReport();
@@ -139,7 +143,7 @@ $(".business-tabs").addEventListener("keydown", event => {
     const next = event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1 : (index + (event.key === nextKey ? 1 : -1) + tabs.length) % tabs.length;
     showTab(tabs[next].dataset.tab, true);
 });
-$("#back-to-results").onclick = () => { $("#panel-customers").classList.remove("member-focused"); $("#query").focus(); };
+$("#back-to-results").onclick = () => { $("#panel-customers").classList.remove("member-focused"); $("#refresh-rewards").focus(); };
 $(".quick-scan").onclick = event => { event.preventDefault(); showTab("scan"); $("#scan").focus(); };
 window.addEventListener("hashchange", () => showTab(location.hash.slice(1)));
 const activityName = kind => ({purchase:"Qualifying paid visit",referral:"Referral bonus",redeem:"Reward redeemed",adjustment:"Progress corrected",expire:"Reward expired",refund:"Refund recorded",revoke:"Reward revoked",opening:"Opening balance"})[kind] || "Recorded account activity";
@@ -229,26 +233,37 @@ $("#referral-settings").onsubmit = async event => {
 function date(ms) {
   return ms ? new Date(Number(ms)).toLocaleString(undefined,{timeZone:displayTimezone}) : "Earlier record";
 }
-async function search() {
-  const rows = await api(
-    "/api/staff/members?q=" + encodeURIComponent($("#query").value),
-  );
-  $("#customers").replaceChildren();
-  for (const m of rows) {
-    const b = text("button", "", "customer-row");
-    b.append(text("span", m.name, "customer-row-name"));
-    b.append(text("span", `${m.stamps}/${m.stampGoal || 8} stamps · ${m.rewards} rewards`, "customer-row-meta"));
-    b.classList.toggle("is-selected", selected === m.id);
-    b.onclick = () => {
-      if (busy) return;
-      document.querySelectorAll(".customer-row").forEach((row) => row.classList.remove("is-selected"));
-      b.classList.add("is-selected");
-      $("#member").value = m.id;
-      lookup().then(found => { if (found) focusCustomer(); }).catch((e) => outcome(e.message,true));
-    };
-    $("#customers").append(b);
+let rewardCursor = null, rewardListGeneration = 0;
+async function search(append = false) {
+  const generation = ++rewardListGeneration;
+  if (!append) { rewardCursor = null; $("#customers").replaceChildren(); }
+  $("#refresh-rewards").disabled = $("#more-rewards").disabled = true;
+  $("#more-rewards").hidden = true;
+  $("#rewards-status").textContent = "Loading eligible customers…";
+  try {
+    const result = await api("/api/staff/rewards" + (append && rewardCursor ? "?after=" + encodeURIComponent(rewardCursor) : ""));
+    if (generation !== rewardListGeneration) return;
+    for (const m of result.customers) {
+      const b = text("button", "", "customer-row");
+      b.append(text("span", m.name, "customer-row-name"));
+      b.append(text("span", `${m.rewards} available reward${m.rewards === 1 ? "" : "s"} · ${m.stamps}/${m.stampGoal || 8} stamps`, "customer-row-meta"));
+      b.classList.toggle("is-selected", selected === m.id);
+      b.onclick = () => {
+        if (busy) return;
+        $("#member").value = m.id;
+        lookup().then(found => { if (found) focusCustomer(); }).catch(e => outcome(e.message,true));
+      };
+      $("#customers").append(b);
+    }
+    rewardCursor = result.nextCursor;
+    $("#more-rewards").hidden = !rewardCursor;
+    $("#rewards-status").textContent = $("#customers").children.length ? "Select a customer to review and confirm their reward." : "No customers have an available reward yet.";
+  } catch (error) {
+    if (generation === rewardListGeneration) $("#rewards-status").textContent = "Could not refresh rewards. Please try again. " + error.message;
+    throw error;
+  } finally {
+    if (generation === rewardListGeneration) $("#refresh-rewards").disabled = $("#more-rewards").disabled = false;
   }
-  if (!rows.length) $("#customers").append(text("p", "No customers found."));
 }
 async function lookup() {
   if (busy) return false;
@@ -258,7 +273,6 @@ async function lookup() {
   $("#redeem").disabled = true;
   selected = undefined;
   selectedMember = undefined;
-  $("#customer-link").hidden = true;
   $("#customer-secondary-actions").hidden = true;
   $("#history").replaceChildren(text("p","Waiting for a verified membership…"));
   $("#delivery").replaceChildren();
@@ -276,8 +290,6 @@ async function lookup() {
   $("#customer-name").textContent = m.name;
   $("#balance").textContent =
     `${m.stamps} / ${m.stampGoal} stamps · ${m.rewards} available rewards`;
-  $("#customer-link").hidden = false;
-  $("#customer-link").href = "/?member=" + encodeURIComponent(m.privateCardToken || m.id);
   $("#redeem").disabled = m.rewards < 1;
   $("#redeem").textContent = `Redeem one ${m.rewardLabel || "reward"}`;
   if ($("#correction")) $("#correction").hidden = !["owner","manager"].includes(role);
@@ -351,10 +363,8 @@ $("#programme").onsubmit = async (e) => {
     $("#programme-status").dataset.tone = "error";
   }
 };
-$("#search").onsubmit = (e) => {
-  e.preventDefault();
-  search().catch((e) => message(e.message));
-};
+$("#refresh-rewards").onclick = () => search().catch(e => message(e.message,true));
+$("#more-rewards").onclick = () => search(true).catch(e => message(e.message,true));
 $("#lookup").onsubmit = (e) => {
   e.preventDefault();
   lookup().then(found => { if(found) { showTab("customers"); focusCustomer(); } }).catch((e) => scanFeedback(e.message,true));
@@ -374,11 +384,12 @@ $("#logout").onclick = async () => {
 async function installWorkspacePicker(me) {
   const workspaces=await api("/api/staff/workspaces");
   $("#workspace-label")?.remove();
-  const label=text("label","Business and location");const select=document.createElement("select");select.id="workspace-picker";
+  const label=text("label","Record activity at");const select=document.createElement("select");select.id="workspace-picker";
   label.id="workspace-label";
   for(const workspace of workspaces){const option=text("option",workspace.location_name+" · "+workspace.name+" · "+workspace.role);option.value=JSON.stringify([workspace.shop_id,workspace.location_id]);option.selected=workspace.shop_id===me.shopId&&workspace.location_id===me.locationId;select.append(option);}
   currentLocationName = workspaces.find(workspace => workspace.shop_id === me.shopId && workspace.location_id === me.locationId)?.location_name || "current location";
-  label.append(select);$("#identity").after(label);
+  label.append(select);$("#work-location-picker").append(label);
+  $("#work-location").hidden = workspaces.length <= 1;
   select.onchange=async()=>{
     if(busy||pending){message("Resolve your pending transaction before changing workspace.",true);select.value=JSON.stringify([me.shopId,me.locationId]);return;}
     select.disabled=true;
@@ -437,18 +448,6 @@ function installPilotTools() {
   correction.id = "correction"; correction.hidden = true;
   correction.innerHTML = '<h3>Correct stamp progress</h3><p>Owner or manager only. Corrections preserve rewards and cannot cross a reward threshold. This is not a sale refund.</p><label>Stamp change<input name="delta" type="number" min="-100" max="100" required></label><label>Reason<input name="reason" minlength="3" maxlength="240" required></label><button>Save correction</button>';
   $("#customer-secondary-actions").append(correction);
-  const rotate = document.createElement("button"); rotate.type = "button"; rotate.className = "secondary"; rotate.textContent = "Replace private card link";
-  correction.append(rotate);
-  rotate.hidden = role !== "owner";
-  rotate.onclick = async () => {
-    if (!selected || !confirm("Invalidate the previous private link? Existing shortcuts will need the replacement. The balance and scanned membership ID stay the same.")) return;
-    rotate.disabled = true;
-    try {
-      const result = await api("/api/staff/members/" + selected + "/rotate-link", { method:"POST", body:JSON.stringify({confirm:true}) });
-      $("#customer-link").href = result.customerUrl;
-      message("Private link replaced. Open the customer card link and share it securely.");
-    } catch(error) { message(error.message,true); } finally { rotate.disabled = false; }
-  };
   const region = document.createElement("form");
   region.innerHTML = '<h3>Regional settings</h3><p>Bhutan defaults: Nu. (BTN), Asia/Thimphu, BT (+975). No phone number is required for membership.</p><label>Currency code<input name="currency" value="BTN" required pattern="[A-Z]{3}"></label><label>Timezone<input name="timezone" value="Asia/Thimphu" required></label><label>Country code<input name="country" value="BT" required pattern="[A-Z]{2}"></label><button>Save regional settings</button><p role="status"></p>';
   region.id = "regional-settings";
@@ -651,6 +650,17 @@ $("#staff-account").onsubmit = async (event) => {
   }
 };
 let logoData = "";
+$("#shop-location-form").onsubmit = async event => {
+  event.preventDefault(); const button=event.currentTarget.querySelector("button"); button.disabled=true;
+  $("#shop-location-status").textContent="Publishing location…";
+  try {
+    shopLocation=await api("/api/staff/shop-location",{method:"POST",body:JSON.stringify({address:$("#shop-address").value,mapsUrl:$("#shop-maps-url").value})});
+    $("#shop-location-status").textContent="Published. Customers will see this location when their cards refresh.";
+    updatePreview();
+  } catch(error) { $("#shop-location-status").textContent=error.message; }
+  finally { button.disabled=false; }
+};
+for(const field of ["#shop-address","#shop-maps-url"]) $(field).addEventListener("input",()=>{$("#shop-location-status").textContent="Unsaved location changes. Publish to update customer cards.";});
 function designPayload() {
   return {
     name: $("#shop-name").value.trim(), color: $("#shop-color").value,
@@ -661,7 +671,7 @@ function designPayload() {
 }
 function updatePreview() {
   const design = designPayload();
-  CardUI.render($("#card-preview"), { ...design, shopName: design.name || "Your shop", shopColor: design.color, name: "Sample member", stamps: Math.min(3,savedGoal-1), rewards: 0, stampGoal: savedGoal }, { preview: true });
+  CardUI.render($("#card-preview"), { ...design, ...shopLocation, shopName: design.name || "Your shop", shopColor: design.color, name: "Sample member", stamps: Math.min(3,savedGoal-1), rewards: 0, stampGoal: savedGoal }, { preview: true });
   $("#preview-scope").textContent = `Sample web card · Saved reward target: ${savedGoal} stamps. ${JSON.stringify(design) === savedDesignSignature ? "Appearance matches the last saved version." : "Appearance changes are not published yet."} Reward rules have their own save below.`;
 }
 for (const input of $("#shop-branding").querySelectorAll("input:not([type=file]),select")) input.addEventListener("input", updatePreview);
@@ -713,7 +723,6 @@ window.addEventListener("pagehide", () => { controls?.stop(); staffSession = und
       if (dashboardEnabled) for (const key of ["overview", "referrals"]) { availableTabs.add(key); $("#tab-" + key).hidden = false; }
     }
     if (me.shopId) {
-      $("#customer-join-link").href = "/join.html?shop=" + encodeURIComponent(me.shopId);
       $("#shop-qr-link").href = "/shop.html?shop=" + encodeURIComponent(me.shopId);
       const shop = await api("/api/staff/shop");
       $("nav a").textContent = shop.name;
@@ -727,6 +736,10 @@ window.addEventListener("pagehide", () => { controls?.stop(); staffSession = und
       $("#stamp-icon").value = shop.stamp_icon || "check";
       $("#card-style").value = shop.card_style || "classic";
       logoData = shop.logo_data || "";
+      shopLocation = {shopAddress:shop.shop_address || "",shopMapsUrl:shop.shop_maps_url || ""};
+      $("#shop-address").value = shopLocation.shopAddress;
+      $("#shop-maps-url").value = shopLocation.shopMapsUrl;
+      $("#shop-location-section").hidden = role !== "owner";
       if (role === "owner") $("#shop-branding").hidden = false;
     }
     $("#scan").disabled = false;
