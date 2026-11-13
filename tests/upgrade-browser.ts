@@ -196,7 +196,7 @@ try {
   assert.equal(await page.evaluate(()=>sessionStorage.getItem('coffeePending')),null);
   await page.unroute('**/api/staff/members/*/redeem');
   await page.screenshot({path:'data/upgrade-screenshots/rewards-redemption.png',fullPage:true});
-  await page.locator("#tab-team").click();
+  await page.locator("#tab-design").click();
   await page.locator("#locations-management > summary").click();
   await page.locator("#location-create input").fill("Paro counter");
   await page.locator("#location-create button").click();
