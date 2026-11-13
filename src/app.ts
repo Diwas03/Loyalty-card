@@ -26,6 +26,7 @@ const safe = (a: string, b: string) => {
 };
 const publicMember = (m: Member) => ({
   id: m.id,
+  membershipCode: m.id,
   name: m.name,
   stamps: m.stamps,
   rewards: m.rewards,

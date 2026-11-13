@@ -1,6 +1,9 @@
 (async () => {
   const $ = selector => document.querySelector(selector);
   const id = new URLSearchParams(location.search).get("member");
+  const emptyWalletMarkup = $("#card").innerHTML;
+  const connection = () => { $("#wallet-connection").textContent=navigator.onLine?"Device online":"Offline"; $("#wallet-connection").dataset.offline=String(!navigator.onLine); };
+  connection();window.addEventListener("online",connection);window.addEventListener("offline",connection);
   const node = (tag,value,className) => { const element=document.createElement(tag); if(value!==undefined)element.textContent=value; if(className)element.className=className;return element; };
   let initial=true,loading=false,previous,previousRewards,expandedHistory=false,lastMember,displayTimezone;
   const status=(value,error=false,announce=true)=>{const box=$("#message");box.textContent=value;box.dataset.tone=error?"error":"success";box.setAttribute("aria-live",announce?"polite":"off");};
@@ -17,6 +20,10 @@
       transfer.disabled=true;
       try{const response=await fetch("/api/members/"+encodeURIComponent(id)+"/transfer",{method:"POST",headers:{"Content-Type":"application/json"},body:"{}",cache:"no-store"});const data=await response.json();if(!response.ok)throw Error(data.error||"Transfer is unavailable on this server.");transferLink.value=new URL(data.transferUrl,location.origin).href;transferLink.hidden=false;transferLink.focus();transferLink.select();status("Private transfer link ready. Copy it to your other device; it works once within ten minutes. Creating another link replaces this one.");}
       catch(error){status(error.message,true);}finally{transfer.disabled=false;}
+    };
+    $("#copy-private-card").onclick=async()=>{
+      try { await navigator.clipboard.writeText(location.href);status("Private card link copied. Only share it with someone you trust."); }
+      catch { status("Copy the private card link from your browser’s address bar.",true); }
     };
     $("#share-card").onclick=async()=>{
       try{if(navigator.share)await navigator.share({title:"My loyalty card",url:location.href});else{await navigator.clipboard.writeText(location.href);status("Private card link copied. Keep it somewhere safe.");}}
@@ -87,7 +94,7 @@
         if(explicit)$("#card-name")?.focus({preventScroll:true});
       }else{
         const saved=CardUI.savedCards();
-        if(!saved.length){if(previous){$("#card").className="wallet-empty";$("#card").replaceChildren(node("h2","No cards yet"),node("p","Add a shop or private card link to restore your shortcut."));previous=undefined;}status("Add your first card using the button above.",false,initial);initial=false;return;}
+        if(!saved.length){if(previous){$("#card").className="wallet-empty";$("#card").innerHTML=emptyWalletMarkup;previous=undefined;}status("Add your first card using the button above.",false,initial);initial=false;return;}
         const results=await Promise.allSettled(saved.map(card=>readMember(card.id))),signature=JSON.stringify(results);
         if(signature!==previous){
           const active=document.activeElement,focusInside=$("#card").contains(active),focusId=active?.dataset.walletId,focusAction=active?.dataset.walletAction;
@@ -122,14 +129,27 @@
   const dialog=$("#add-card-dialog");let camera,cameraGeneration=0,invoker;
   const stopCamera=()=>{++cameraGeneration;camera?.stop();camera=undefined;$("#join-camera").hidden=true;$("#scan-shop").disabled=false;};
   const openLink=value=>{const input=value.trim(),url=new URL(CardUI.uuid.test(input)?"/?member="+encodeURIComponent(input):input,location.origin);if(url.origin!==location.origin)throw Error("Use a card or shop link from this loyalty app.");const validCard=["/","/index.html"].includes(url.pathname)&&CardUI.uuid.test(url.searchParams.get("member")),validShop=url.pathname==="/join.html";if(!validCard&&!validShop)throw Error("Enter a private card link or the shop’s signup link.");stopCamera();location.assign(url.href);};
-  $("#add-card").onclick=()=>{invoker=document.activeElement;dialog.showModal();$("#add-card-title").focus();};
+  function setAddMethod(method) {
+    const scanning=method==="scan";
+    $("#scan-method").hidden=!scanning;$("#paste-method").hidden=scanning;
+    for(const [selector,active] of [["#scan-shop",scanning],["#paste-card-tab",!scanning]]) { $(selector).setAttribute("aria-selected",String(active));$(selector).tabIndex=active?0:-1; }
+  }
+  function openWallet(method="paste",trigger=document.activeElement) {
+    invoker=trigger;dialog.showModal();setAddMethod(method);
+    if(method==="scan") $("#scan-shop").click();else $("#add-card-title").focus();
+  }
+  $("#add-card").onclick=()=>openWallet();
+  document.addEventListener("click",event=>{if(event.target.closest("#empty-scan-card"))openWallet("scan",event.target.closest("button"));if(event.target.closest("#empty-paste-card"))openWallet("paste",event.target.closest("button"));});
+  $("#paste-card-tab").onclick=()=>{stopCamera();setAddMethod("paste");$("#card-url").focus();};
+  $(".wallet-dialog-tabs").addEventListener("keydown",event=>{if(["ArrowLeft","ArrowRight","Home","End"].includes(event.key)){event.preventDefault();const target=event.key==="Home"||event.target.id==="paste-card-tab"&&event.key!=="End"?$("#scan-shop"):$("#paste-card-tab");target.click();target.focus();}});
+
   $("#close-add-card").onclick=()=>dialog.close();dialog.addEventListener("close",()=>{stopCamera();if(invoker?.isConnected)invoker.focus({preventScroll:true});});
   $("#card-url").addEventListener("input",()=>$("#card-url").removeAttribute("aria-invalid"));
   $("#add-card-form").onsubmit=event=>{event.preventDefault();try{openLink($("#card-url").value);}catch(error){$("#card-url").setAttribute("aria-invalid","true");$("#add-card-message").textContent=error.message;}};
   $("#scan-shop").onclick=async()=>{
-    $("#scan-shop").disabled=true;$("#join-camera").hidden=false;$("#add-card-message").textContent="Point your camera at the shop’s signup QR code.";const generation=++cameraGeneration;
+    setAddMethod("scan");$("#scan-shop").disabled=true;$("#join-camera").hidden=false;$("#add-card-message").textContent="Point your camera at the shop’s signup QR code.";const generation=++cameraGeneration;
     try{const controls=await new ZXingBrowser.BrowserQRCodeReader().decodeFromVideoDevice(undefined,"join-camera",(result,_error,scanner)=>{if(!result||generation!==cameraGeneration||!dialog.open)return;try{openLink(result.getText());scanner.stop();}catch(error){$("#add-card-message").textContent=error.message;}});if(generation!==cameraGeneration||!dialog.open)controls.stop();else camera=controls;}
-    catch{if(generation===cameraGeneration){stopCamera();$("#add-card-message").textContent="Camera unavailable. Paste a shop or private card link, or use your phone camera.";}}
+    catch{if(generation===cameraGeneration){stopCamera();setAddMethod("paste");$("#card-url").focus();$("#add-card-message").textContent="Camera unavailable. Paste a shop or private card link, or use your phone camera.";}}
   };
   window.addEventListener("pagehide",stopCamera);
   await refresh();

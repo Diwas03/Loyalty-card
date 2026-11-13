@@ -33,6 +33,8 @@ let currentShopName = "this shop", currentLocationName = "current location", sel
 const outcome = (value, error = false) => {
   $("#customer-outcome").textContent = value;
   $("#customer-outcome").dataset.tone = error ? "error" : "success";
+  if (currentTab === "customers") { $("#rewards-action-status").textContent=value; $("#rewards-action-status").dataset.tone=error?"error":"success"; }
+  $("#retry-reward").hidden = !pending || pending.action !== "redeem";
 };
 const scanFeedback = (text, error = false) => {
   $("#scan-feedback").hidden = false;
@@ -94,7 +96,7 @@ function configureNavigation() {
 }
 narrowNavigation.addEventListener("change", configureNavigation);
 function focusCustomer() {
-  $("#panel-customers").classList.add("member-focused");
+  $("#customer-result").hidden = false;
   $("#customer-name").focus({ preventScroll: false });
 }
 function showTab(key, focus = false) {
@@ -108,7 +110,8 @@ function showTab(key, focus = false) {
   $("#section-heading").textContent = sectionNames[key];
   $("#section-description").textContent = ({overview:"Your latest shop activity, all in one place.",customers:"Recognise your regulars. Review available rewards and confirm each redemption.",scan:"One scan. One stamp. Keep your counter moving.",design:"Make your card feel like your shop. Publish your address, appearance and reward rules.",referrals:"See how your customers help your community grow.",team:"Give your team the access and work locations they need.",reports:"Understand recorded activity with clear, auditable numbers."})[key];
   $("#current-section").textContent = sectionNames[key];
-  $(".quick-scan").hidden = key === "scan";
+  $(".quick-scan").hidden = key === "scan" || key === "customers";
+  $("#section-description").hidden = key === "customers";
   for (const button of document.querySelectorAll("[data-tab]")) {
     const active = button.dataset.tab === key;
     button.setAttribute("aria-selected", String(active)); button.tabIndex = active ? 0 : -1;
@@ -143,7 +146,7 @@ $(".business-tabs").addEventListener("keydown", event => {
     const next = event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1 : (index + (event.key === nextKey ? 1 : -1) + tabs.length) % tabs.length;
     showTab(tabs[next].dataset.tab, true);
 });
-$("#back-to-results").onclick = () => { $("#panel-customers").classList.remove("member-focused"); $("#refresh-rewards").focus(); };
+$("#back-to-results").onclick = () => { $("#customer-result").hidden=true; $("#scan").focus(); };
 $(".quick-scan").onclick = event => { event.preventDefault(); showTab("scan"); $("#scan").focus(); };
 window.addEventListener("hashchange", () => showTab(location.hash.slice(1)));
 const activityName = kind => ({purchase:"Qualifying paid visit",referral:"Referral bonus",redeem:"Reward redeemed",adjustment:"Progress corrected",expire:"Reward expired",refund:"Refund recorded",revoke:"Reward revoked",opening:"Opening balance"})[kind] || "Recorded account activity";
@@ -179,19 +182,18 @@ async function loadOverview() {
   try {
     const result = await api("/api/staff/overview");
     $("#shop-metrics").replaceChildren();
-    $("#shop-metrics").className = "metric-groups";
-    const metricGroups = {};
-    for(const [key,label] of [["members","Memberships"],["visits-rewards","Visits & rewards"],["referrals","Referrals"]]) {
-      const group=text("div","","metric-group");group.append(text("h3",label));
-      const values=text("div","","metrics-grid");group.append(values);$("#shop-metrics").append(group);metricGroups[key]=values;
-    }
-    for (const [key, label, note] of [["customers", "Customers", "All memberships"], ["active_customers", "Active customers", "Paid visit in the last 30 days"], ["purchases_24h", "Paid visits", "Last 24 hours"], ["available_rewards", "Available rewards", "Earned and not yet redeemed"], ["referrals", "Referred signups", "All time"], ["credited_referrals", "Qualified referrals", "First paid visit completed"]]) {
-      const metric = text("div", "", "metric"); metric.dataset.group = ["customers","active_customers"].includes(key) ? "members" : ["referrals","credited_referrals"].includes(key) ? "referrals" : "visits-rewards"; metric.append(text("span", label), text("strong", String(result.metrics[key] ?? "Not available")), text("small", note)); metricGroups[metric.dataset.group].append(metric);
+    $("#shop-metrics").className = "metrics-grid overview-metrics";
+    for (const [key, label, note] of [["customers", "Customers", "All memberships"], ["active_customers", "Active customers", "Paid visit in the last 30 days"], ["purchases_24h", "Paid visits", "Last 24 hours"], ["available_rewards", "Available rewards", "Earned and not yet redeemed"]]) {
+      const metric = text(key === "available_rewards" ? "button" : "div", "", "metric");
+      metric.dataset.metric = key;
+      metric.append(text("span",label),text("strong",String(result.metrics[key] ?? "Not available")),text("small",note));
+      if(key === "available_rewards") { metric.type="button"; metric.classList.add("metric-action"); metric.append(text("span","Review rewards","metric-action-label")); metric.onclick=()=>showTab("customers",true); }
+      $("#shop-metrics").append(metric);
     }
     $("#shop-regulars").replaceChildren();
     for (const customer of result.regulars) {
       const button = text("button", "", "customer-row"); button.append(text("span", customer.name, "customer-row-name"), text("span", `${customer.purchases} paid visits · ${customer.rewards} rewards`, "customer-row-meta"));
-      button.onclick = () => { $("#member").value = customer.id; showTab("customers"); lookup().then(found => { if (found) focusCustomer(); }).catch(error => outcome(error.message,true)); };
+      button.onclick = () => { $("#member").value = customer.id; showTab("scan"); lookup().then(found => { if (found) focusCustomer(); }).catch(error => outcome(error.message,true)); };
       $("#shop-regulars").append(button);
     }
     if (!result.regulars.length) $("#shop-regulars").append(text("p", "Customers will appear here when they join."));
@@ -199,9 +201,10 @@ async function loadOverview() {
       const row = text("div", `${event.name} · ${activityName(event.kind)}`, "activity"); row.append(text("small", `${date(event.created_at)} · ${event.actor}`));
       return row;
     }, "Recorded visits, redemptions and referral bonuses will appear here.", 20);
-    $("#overview-updated").textContent = "Updated " + new Date(result.updatedAt).toLocaleTimeString() + " · refreshes every 30 seconds while open";
+    $("#overview-updated").textContent = "Updated " + new Date(result.updatedAt).toLocaleTimeString() + "";
   } finally { overviewLoading = false; $("#panel-overview").setAttribute("aria-busy", "false"); }
 }
+$("#open-rewards").onclick = () => showTab("customers",true);
 $("#refresh-overview").onclick = () => loadOverview().catch(error => message(error.message));
 setInterval(() => { if (!document.hidden && currentTab === "overview") loadOverview().catch(error => message(error.message)); }, 30000);
 async function loadReferrals() {
@@ -233,7 +236,18 @@ $("#referral-settings").onsubmit = async event => {
 function date(ms) {
   return ms ? new Date(Number(ms)).toLocaleString(undefined,{timeZone:displayTimezone}) : "Earlier record";
 }
-let rewardCursor = null, rewardListGeneration = 0;
+let rewardCursor = null, rewardListGeneration = 0, choosingReward = false;
+async function confirmListedReward(id, button) {
+  if (busy || choosingReward) return;
+  choosingReward=true; button.disabled=true;
+  try {
+    $("#member").value=id;
+    if (await lookup()) await recordAction("redeem");
+  } catch(error) { outcome(error.message,true); }
+  finally { choosingReward=false; button.disabled=false; }
+}
+$("#retry-reward").onclick = () => { if(pending?.action === "redeem") confirmListedReward(pending.id,$("#retry-reward")); };
+
 async function search(append = false) {
   const generation = ++rewardListGeneration;
   if (!append) { rewardCursor = null; $("#customers").replaceChildren(); }
@@ -244,25 +258,23 @@ async function search(append = false) {
     const result = await api("/api/staff/rewards" + (append && rewardCursor ? "?after=" + encodeURIComponent(rewardCursor) : ""));
     if (generation !== rewardListGeneration) return;
     for (const m of result.customers) {
-      const b = text("button", "", "customer-row");
-      b.append(text("span", m.name, "customer-row-name"));
-      b.append(text("span", `${m.rewards} available reward${m.rewards === 1 ? "" : "s"} · ${m.stamps}/${m.stampGoal || 8} stamps`, "customer-row-meta"));
-      b.classList.toggle("is-selected", selected === m.id);
-      b.onclick = () => {
-        if (busy) return;
-        $("#member").value = m.id;
-        lookup().then(found => { if (found) focusCustomer(); }).catch(e => outcome(e.message,true));
-      };
+      const b = text("div", "", "customer-row reward-row");
+      const customer=text("div","","reward-person");
+      customer.append(text("span",m.name,"customer-row-name"),text("span",`${m.rewards} available reward${m.rewards === 1 ? "" : "s"}`,"customer-row-meta"));
+      const confirmButton=text("button","Confirm reward","reward-confirm");confirmButton.type="button";
+      confirmButton.setAttribute("aria-label","Confirm reward for "+m.name);
+      confirmButton.onclick=()=>confirmListedReward(m.id,confirmButton);
+      b.append(customer,confirmButton);
       $("#customers").append(b);
     }
     rewardCursor = result.nextCursor;
     $("#more-rewards").hidden = !rewardCursor;
-    $("#rewards-status").textContent = $("#customers").children.length ? "Select a customer to review and confirm their reward." : "No customers have an available reward yet.";
+    $("#rewards-status").textContent = $("#customers").children.length ? "" : "No customers have an available reward yet.";
   } catch (error) {
     if (generation === rewardListGeneration) $("#rewards-status").textContent = "Could not refresh rewards. Please try again. " + error.message;
     throw error;
   } finally {
-    if (generation === rewardListGeneration) $("#refresh-rewards").disabled = $("#more-rewards").disabled = false;
+    if (generation === rewardListGeneration) { $("#refresh-rewards").disabled = $("#more-rewards").disabled = false; $("#retry-reward").hidden=!pending || pending.action!=="redeem"; }
   }
 }
 async function lookup() {
@@ -367,7 +379,7 @@ $("#refresh-rewards").onclick = () => search().catch(e => message(e.message,true
 $("#more-rewards").onclick = () => search(true).catch(e => message(e.message,true));
 $("#lookup").onsubmit = (e) => {
   e.preventDefault();
-  lookup().then(found => { if(found) { showTab("customers"); focusCustomer(); } }).catch((e) => scanFeedback(e.message,true));
+  lookup().then(found => { if(found) { showTab("scan"); focusCustomer(); } }).catch((e) => scanFeedback(e.message,true));
 };
 $("#refresh").onclick = () => lookup().catch((e) => message(e.message));
 $("#logout").onclick = async () => {
@@ -551,7 +563,7 @@ async function recordAction(action, automatic = false) {
       busy = false;
       await lookup();
       await search();
-      outcome(scanned
+      outcome(currentTab === "customers" && !scanned ? `Reward confirmed for ${actionMember.name}.` : scanned
         ? (result.awarded ? `One stamp added for ${actionMember.name}. Confirmed balance: ${result.stamps}/${result.stampGoal} stamps · ${result.rewards} rewards.` : "This request was already handled; no additional stamp was added.")
         : `Reward redeemed for ${actionMember.name}. Confirmed balance: ${result.stamps}/${result.stampGoal} stamps · ${result.rewards} rewards.`);
     } catch (e) {
@@ -605,7 +617,7 @@ $("#scan").onclick = async () => {
           if(!found) return;
           if (generation !== scanGeneration) return;
           await recordAction("purchase", true);
-          showTab("customers");
+          showTab("scan");
           focusCustomer();
         } catch (error) {
           scanFeedback(error.invalidQR || error.status === 404 ? "Invalid QR code. Please show a valid customer membership QR for " + currentShopName + "." : error.message, true);
@@ -763,7 +775,14 @@ window.addEventListener("pagehide", () => { controls?.stop(); staffSession = und
     }
     $("#identity").textContent = `${me.username} · ${me.businessRole || me.role}`;
     await search();
-    for(const button of document.querySelectorAll("[data-tab]")) button.textContent = sectionNames[button.dataset.tab];
+    const icons = {overview:"M3 3h7v7H3z M14 3h7v7h-7z M3 14h7v7H3z M14 14h7v7h-7z",customers:"M3 8h18v4H3z M5 12v9h14v-9 M12 8v13 M12 8C6 8 5 2 8 2c3 0 4 6 4 6s1-6 4-6c3 0 2 6-4 6",scan:"M8 3H3v5 M16 3h5v5 M3 16v5h5 M21 16v5h-5 M5 12h14",design:"M3 5h18v14H3z M3 10h18 M7 15h3",referrals:"M16 8a4 4 0 1 0-8 0 4 4 0 0 0 8 0 M4 21v-2c0-4 16-4 16 0v2 M18 3l3 3-3 3",team:"M15 7a3 3 0 1 0-6 0 3 3 0 0 0 6 0 M3 21v-3c0-4 18-4 18 0v3 M3 5v6 M0 8h6",reports:"M4 3v18h17 M9 16v-5 M14 16V7 M19 16v-8"};
+    for(const button of document.querySelectorAll("[data-tab]")) {
+      button.textContent=sectionNames[button.dataset.tab];
+      const svg=document.createElementNS("http://www.w3.org/2000/svg","svg");svg.setAttribute("viewBox","0 0 24 24");svg.setAttribute("aria-hidden","true");svg.classList.add("nav-icon");
+      const path=document.createElementNS(svg.namespaceURI,"path");path.setAttribute("d",icons[button.dataset.tab]||icons.overview);svg.append(path);button.prepend(svg);
+    }
+    $("#workspace-date").textContent = new Intl.DateTimeFormat(undefined,{weekday:"long",day:"numeric",month:"long",timeZone:displayTimezone}).format(new Date());
+
     configureNavigation();
     showTab(location.hash.slice(1));
   } catch (e) {

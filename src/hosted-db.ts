@@ -37,6 +37,7 @@ export const publicMember = (m: any) => ({
     credited: m.credited_count || 0,
   },
   id: m.card_token || m.id,
+  membershipCode: m.id,
   name: m.name,
   stamps: m.stamps,
   rewards: m.rewards,

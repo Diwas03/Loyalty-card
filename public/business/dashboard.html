@@ -3,10 +3,10 @@
     <meta charset="utf-8">
     <meta name="theme-color" content="#193d32">
     <link rel="apple-touch-icon" href="/icons/icon-192.png">
-    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
     <title>Loyalty Business · Dashboard</title>
     <link rel="icon" type="image/svg+xml" href="/brand.svg">
-    <link rel="stylesheet" href="/style.css">
+    <link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/design-system.css">
     <script src="/vendor/zxing/zxing-browser.min.js" defer=""></script>
     <script src="/card-ui.js" defer=""></script>
     <script src="/staff.js" defer=""></script>
@@ -16,16 +16,30 @@
     <nav aria-label="Business and account" class="workspace-topbar">
       <a href="/business/">Loyalty Business</a><a id="shop-qr-link" href="/shop.html" target="_blank" rel="noopener">Print shop QR</a><span id="identity"></span><button id="logout" class="secondary">Sign out</button>
     </nav>
-    <main id="main-content" class="staff-shell"><details id="section-navigation" class="section-navigation" open=""><summary id="section-toggle">Sections: <span id="current-section">Overview</span></summary><div class="business-tabs" role="tablist" aria-label="Workspace sections" aria-orientation="vertical"><button type="button" role="tab" id="tab-overview" aria-controls="panel-overview" aria-selected="false" tabindex="-1" data-tab="overview" hidden="">Overview</button><button type="button" role="tab" id="tab-customers" aria-controls="panel-customers" aria-selected="false" tabindex="-1" data-tab="customers">Rewards</button><button type="button" role="tab" id="tab-scan" aria-controls="panel-scan" aria-selected="false" tabindex="-1" data-tab="scan">Scan &amp; stamp</button><button type="button" role="tab" id="tab-design" aria-controls="panel-design" aria-selected="false" tabindex="-1" data-tab="design" hidden="">Card &amp; rewards</button><button type="button" role="tab" id="tab-referrals" aria-controls="panel-referrals" aria-selected="false" tabindex="-1" data-tab="referrals" hidden="">Referrals</button><button type="button" role="tab" id="tab-team" aria-controls="panel-team" aria-selected="false" tabindex="-1" data-tab="team" hidden="">Team</button></div></details><div id="workspace-content"><div class="workspace-heading"><div><p class="workspace-eyebrow">Loyalty workspace</p><h1 id="section-heading" tabindex="-1">Overview</h1><p class="workspace-subtitle" id="section-description">A clear view of your shop, customers and rewards.</p></div><a href="#scan" class="button quick-scan">Scan a card</a></div><div id="message" role="status" aria-live="polite"></div><div id="panel-overview" class="dashboard-panel" role="tabpanel" aria-labelledby="tab-overview" hidden=""><div class="panel-heading"><div><h2>Shop activity</h2><p id="overview-updated" class="muted">Loading your latest activity…</p></div><button id="refresh-overview" class="secondary">Refresh overview</button></div><div id="shop-metrics" class="metrics-grid"></div><div class="workspace"><section><h2>Your regulars</h2><p class="muted">Customers ranked by recorded paid visits.</p><div id="shop-regulars"></div></section><section><h2>Latest shop activity</h2><div id="shop-activity"></div></section></div></div><div id="panel-customers" class="dashboard-panel" role="tabpanel" aria-labelledby="tab-customers" hidden=""><div class="workspace"><div id="customer-results">        <section id="customer-search">
+    <main id="main-content" class="staff-shell"><details id="section-navigation" class="section-navigation" open=""><summary id="section-toggle">Sections: <span id="current-section">Overview</span></summary><div class="business-tabs" role="tablist" aria-label="Workspace sections" aria-orientation="vertical"><button type="button" role="tab" id="tab-overview" aria-controls="panel-overview" aria-selected="false" tabindex="-1" data-tab="overview" hidden="">Overview</button><button type="button" role="tab" id="tab-customers" aria-controls="panel-customers" aria-selected="false" tabindex="-1" data-tab="customers">Rewards</button><button type="button" role="tab" id="tab-scan" aria-controls="panel-scan" aria-selected="false" tabindex="-1" data-tab="scan">Scan &amp; stamp</button><button type="button" role="tab" id="tab-design" aria-controls="panel-design" aria-selected="false" tabindex="-1" data-tab="design" hidden="">Card &amp; rewards</button><button type="button" role="tab" id="tab-referrals" aria-controls="panel-referrals" aria-selected="false" tabindex="-1" data-tab="referrals" hidden="">Referrals</button><button type="button" role="tab" id="tab-team" aria-controls="panel-team" aria-selected="false" tabindex="-1" data-tab="team" hidden="">Team</button></div></details><div id="workspace-content"><div class="workspace-heading"><div><p class="workspace-eyebrow" id="workspace-date">Your workspace</p><h1 id="section-heading" tabindex="-1">Overview</h1><p class="workspace-subtitle" id="section-description">A clear view of your shop, customers and rewards.</p></div><a href="#scan" class="button quick-scan">Scan a card</a></div><div id="message" role="status" aria-live="polite"></div><div id="panel-overview" class="dashboard-panel" role="tabpanel" aria-labelledby="tab-overview" hidden=""><div class="counter-welcome"><div><span class="counter-label">THE EVERYDAY, REWARDED</span><h2>Ready for your next customer.</h2><p>One scan adds a stamp. A full card earns a little thank-you.</p></div><button id="open-rewards" class="counter-rewards">Open reward desk</button></div><div class="panel-heading"><div><h2>Shop activity</h2><p id="overview-updated" class="muted">Loading your latest activity…</p></div><button id="refresh-overview" class="secondary">Refresh</button></div><div id="shop-metrics" class="metrics-grid"></div><div class="workspace"><section><h2>Your regulars</h2><p class="muted">Customers ranked by recorded paid visits.</p><div id="shop-regulars"></div></section><section><h2>Latest shop activity</h2><div id="shop-activity"></div></section></div></div><div id="panel-customers" class="dashboard-panel" role="tabpanel" aria-labelledby="tab-customers" hidden=""><div class="workspace"><div id="customer-results">        <section id="customer-search">
 
-          <h2>Ready for a reward</h2>
-          <p>Customers with an available reward. Choose a customer, verify their identity, then confirm redemption when handing over the reward.</p>
-          <button id="refresh-rewards" class="secondary">Refresh rewards</button>
+          <h2>Available rewards</h2>
+          <button id="refresh-rewards" class="secondary" hidden>Refresh rewards</button>
           <p id="rewards-status" role="status" aria-live="polite"></p>
-          <div id="customers" class="customer-list"></div><button id="more-rewards" class="secondary" hidden>Load more eligible customers</button>
+          <p id="rewards-action-status" role="status" aria-live="polite"></p><button id="retry-reward" class="secondary" hidden>Check previous confirmation</button><div id="customers" class="customer-list"></div><button id="more-rewards" class="secondary" hidden>Load more eligible customers</button>
         </section>
 
-</div><div id="customer-result"><button id="back-to-results" type="button" class="secondary back-to-results">← Back to rewards</button>        <section id="member-summary">
+</div></div></div><div id="panel-scan" class="dashboard-panel narrow-panel" role="tabpanel" aria-labelledby="tab-scan" hidden="">        <section id="scan-panel">
+          <details id="work-location"><summary>Work location</summary><p>This controls where stamp and reward activity is recorded. The owner edits the public shop address in Programs &amp; cards.</p><div id="work-location-picker"></div></details>
+          <h2>Scan a membership</h2>
+          <p id="scan-help">Scan a customer’s membership QR to add one stamp instantly. Scan again for each additional stamp.</p>
+          <p id="scan-feedback" aria-live="polite" hidden="" role="status"></p>
+          <button id="scan" disabled="">Start camera</button><button id="stop" class="secondary" hidden="">Stop camera</button><video id="video" muted="" playsinline="" hidden=""></video>
+          <form id="lookup" aria-describedby="scan-help">
+            <label for="member">Membership ID · manual fallback</label>
+            <div class="row">
+              <input id="member" required="" placeholder="Membership ID"><button>
+                Look up
+              </button>
+            </div>
+          </form>
+        </section>
+<div id="customer-result" hidden><button id="back-to-results" type="button" class="secondary back-to-results">← Back to scanning</button>        <section id="member-summary">
 
           <h2 id="customer-name" tabindex="-1">Ready when you are</h2>
           <div id="balance" class="balance">Choose an eligible customer or scan a membership QR to get started.</div>
@@ -49,21 +63,7 @@
           <div id="delivery">No membership selected.</div>
           <button id="refresh" class="secondary">Refresh customer</button>
         </details>
-</div></div></div><div id="panel-scan" class="dashboard-panel narrow-panel" role="tabpanel" aria-labelledby="tab-scan" hidden="">        <section id="scan-panel">
-          <details id="work-location"><summary>Work location</summary><p>This controls where stamp and reward activity is recorded. The owner edits the public shop address in Programs &amp; cards.</p><div id="work-location-picker"></div></details>
-          <h2>Scan a membership</h2>
-          <p id="scan-help">Scan a customer’s membership QR to add one stamp instantly. Scan again for each additional stamp.</p>
-          <p id="scan-feedback" aria-live="polite" hidden="" role="status"></p>
-          <button id="scan" disabled="">Start camera</button><button id="stop" class="secondary" hidden="">Stop camera</button><video id="video" muted="" playsinline="" hidden=""></video>
-          <form id="lookup" aria-describedby="scan-help">
-            <label for="member">Membership ID · manual fallback</label>
-            <div class="row">
-              <input id="member" required="" placeholder="Membership ID"><button>
-                Look up
-              </button>
-            </div>
-          </form>
-        </section>
+</div>
 </div><div id="panel-design" class="dashboard-panel" role="tabpanel" aria-labelledby="tab-design" hidden="">        <section id="programme-section" hidden="">
           <h2>Card appearance</h2>
 
